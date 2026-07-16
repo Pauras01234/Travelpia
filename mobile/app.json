@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "TravelPia",
+    "slug": "travelpia",
+    "version": "0.1.0",
+    "scheme": "travelpia",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#14543A",
+      "resizeMode": "contain"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.travelpia.app"
+    },
+    "android": {
+      "package": "com.travelpia.app"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": ["expo-router", "expo-font"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

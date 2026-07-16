@@ -1,0 +1,19 @@
+# Secrets
+.env
+env
+
+# Virtual environments
+.venv/
+.venv3/
+.venv311/
+venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Local debug/scratch scripts
+check_answer.py
+check_app.py
+debug_gradio.py

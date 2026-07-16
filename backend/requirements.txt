@@ -1,0 +1,13 @@
+# TravelPia backend (FastAPI) — runtime dependencies
+fastapi>=0.111,<0.116
+uvicorn[standard]>=0.30
+httpx>=0.27
+pydantic>=2.7
+pydantic-settings>=2.2
+openai>=1.40
+PyJWT[crypto]>=2.8
+tenacity>=8.2
+python-dotenv>=1.0
+
+# Optional: enable only when LLM_PROVIDER=anthropic
+# anthropic>=0.40

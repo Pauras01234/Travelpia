@@ -6,7 +6,7 @@ from typing import List, Tuple, Dict, Any
 import requests
 import gradio as gr
 from dotenv import load_dotenv
-from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from openai import OpenAI
 
 # ===============================
 # ENV
@@ -15,6 +15,8 @@ load_dotenv()
 
 SERPER_KEY = os.getenv("SERPER_API_KEY", "").strip()
 UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY", "").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4o-mini").strip()
 
 COUNTIES = [
     "Antrim","Armagh","Carlow","Cavan","Clare","Cork","Derry","Donegal","Down",
@@ -43,25 +45,30 @@ def cache_set(key: str, data: Any):
 
 
 # ===============================
-# MODEL (TinyLlama)
+# HOSTED LLM
 # ===============================
-MODEL_NAME = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+# Single choke point for text generation. To switch providers later
+# (Claude, Gemini, etc.) edit ONLY this function and the client above —
+# the rest of the app just calls llm_generate(system, user).
+_llm_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-model = AutoModelForCausalLM.from_pretrained(
-    MODEL_NAME,
-    torch_dtype="float32"
-)
 
-LLM = pipeline(
-    "text-generation",
-    model=model,
-    tokenizer=tokenizer,
-    max_new_tokens=256,
-    temperature=0.45,
-    do_sample=True,
-    repetition_penalty=1.1
-)
+def llm_generate(system_prompt: str, user_prompt: str, max_tokens: int = 350) -> str:
+    if not _llm_client:
+        return "The travel assistant isn't configured yet (missing OPENAI_API_KEY)."
+    try:
+        resp = _llm_client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.45,
+            max_tokens=max_tokens,
+        )
+        return (resp.choices[0].message.content or "").strip()
+    except Exception:
+        return "Sorry, I couldn't generate an answer right now. Please try again."
 
 
 # ===============================
@@ -118,19 +125,24 @@ def wiki_fallback(county: str, question: str):
 # ===============================
 # PROMPT
 # ===============================
-def build_prompt(county: str, question: str, info: List[str]):
-    context = " ".join(info)[:2000]
-    return f"""
-You are Travelpia, a friendly travel expert.
+def build_prompt(county: str, question: str, info: List[str], mode: str = "fast") -> Tuple[str, str]:
+    # Detailed mode gets more context and a longer, richer answer instruction.
+    if mode == "detailed":
+        context = " ".join(info)[:3500]
+        length_rule = (
+            "Give a thorough, detailed answer of at least 6 sentences. "
+            "Include specific names, places, and practical tips where the information supports them."
+        )
+    else:
+        context = " ".join(info)[:2000]
+        length_rule = "Give a concise answer in 3–5 sentences."
 
-County: {county}
-Question: {question}
-
-Use this information:
-{context}
-
-Reply in 3–5 sentences.
-"""
+    system_prompt = (
+        "You are Travelpia, a friendly travel expert on Ireland. "
+        "Answer using only the information provided. " + length_rule
+    )
+    user_prompt = f"County: {county}\nQuestion: {question}\n\nInformation:\n{context}"
+    return system_prompt, user_prompt
 
 
 # ===============================
@@ -204,8 +216,9 @@ def answer(county, question, mode):
     if not snippets:
         return "No results available right now.", "", "", ""
 
-    prompt = build_prompt(county, question, snippets)
-    text = LLM(prompt)[0]["generated_text"].strip()
+    system_prompt, user_prompt = build_prompt(county, question, snippets, mode)
+    max_tokens = 700 if mode == "detailed" else 350
+    text = llm_generate(system_prompt, user_prompt, max_tokens=max_tokens)
 
     src_md = ""
     if links:
