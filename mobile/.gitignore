@@ -6,6 +6,13 @@ dist-web/
 web-build/
 *.log
 
+# Metro bundler cache (never commit)
+.metro/
+metro-cache/
+ml-cache/
+D:/
+**/ml-cache/
+
 # Native
 ios/
 android/
