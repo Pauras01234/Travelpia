@@ -1,5 +1,5 @@
-import { ComingSoon } from "@/components/ComingSoon";
+import WeatherScreen from "@/features/weather/WeatherScreen";
 
 export default function WeatherRoute() {
-  return <ComingSoon title="Weather" icon="partly-sunny-outline" />;
+  return <WeatherScreen />;
 }
