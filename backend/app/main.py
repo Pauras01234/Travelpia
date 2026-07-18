@@ -16,7 +16,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import ask, health, images
+from app.api.routes import ask, health, images, places
 from app.config import Settings, get_settings
 from app.core.cache import TTLCache
 from app.core.context import request_id_ctx
@@ -46,6 +46,7 @@ async def lifespan(app: FastAPI):
     app.state.search_cache = TTLCache[SearchResult](settings.cache_ttl_seconds)
     app.state.image_cache = TTLCache(settings.cache_ttl_seconds)
     app.state.response_cache = TTLCache[AskResponse](settings.cache_ttl_seconds)
+    app.state.places_cache = TTLCache(settings.cache_ttl_seconds)
 
     # Build the LLM client eagerly so misconfiguration surfaces at startup in
     # logs (not as a per-request surprise). If unconfigured, the /ask route
@@ -99,6 +100,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(ask.router)
     app.include_router(images.router)
+    app.include_router(places.router)
     return app
 
 

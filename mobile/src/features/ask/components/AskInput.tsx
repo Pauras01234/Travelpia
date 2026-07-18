@@ -20,7 +20,7 @@ export function AskInput({
   disabled = false,
 }: AskInputProps) {
   const theme = useTheme();
-  const canSend = value.trim().length >= 3 && !disabled;
+  const canSend = value.trim().length >= 1 && !disabled;
 
   return (
     <View

@@ -20,6 +20,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { ExploreProvider } from "@/features/explore/ExploreContext";
 import { ThemeProvider, useThemeContext } from "@/theme/ThemeProvider";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -49,7 +50,9 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <ThemedNavigation />
+        <ExploreProvider>
+          <ThemedNavigation />
+        </ExploreProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

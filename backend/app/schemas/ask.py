@@ -22,6 +22,24 @@ class AskMode(str, Enum):
     detailed = "detailed"
 
 
+class Role(str, Enum):
+    """Author of a conversation turn."""
+
+    user = "user"
+    assistant = "assistant"
+
+
+class Turn(BaseModel):
+    """One prior message, used to give the assistant short-term memory."""
+
+    role: Role
+    content: str = Field(..., min_length=1, max_length=4000)
+
+
+# Only the most recent turns are worth sending; cap to bound cost/latency.
+MAX_HISTORY_TURNS = 10
+
+
 class Source(BaseModel):
     """A cited web source backing the answer."""
 
@@ -45,14 +63,24 @@ class AskRequest(BaseModel):
     county: str = Field(..., description="One of the 32 counties of Ireland.")
     question: str = Field(
         ...,
-        min_length=3,
+        min_length=1,
         max_length=500,
-        description="The user's free-text question.",
+        description="The user's latest free-text message.",
     )
     mode: AskMode = Field(
         default=AskMode.fast,
         description="Answer depth: 'fast' (concise) or 'detailed' (thorough).",
     )
+    history: list[Turn] = Field(
+        default_factory=list,
+        description="Prior conversation turns, oldest first, for context.",
+    )
+
+    @field_validator("history")
+    @classmethod
+    def _cap_history(cls, v: list[Turn]) -> list[Turn]:
+        # Keep only the most recent turns; ignore anything older.
+        return v[-MAX_HISTORY_TURNS:]
 
     @field_validator("county")
     @classmethod

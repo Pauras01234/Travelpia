@@ -30,7 +30,8 @@ async def ready(
     checks = {
         "llm": getattr(request.app.state, "llm_client", None) is not None,
         "search": bool(settings.serper_api_key),
-        "images": bool(settings.unsplash_access_key),
+        # Images + places now use Serper (Google Images), not Unsplash.
+        "images": bool(settings.serper_api_key),
     }
     # "search" is the only hard dependency for a useful answer; images and a
     # configured LLM are checked too. Ready if the LLM is available.

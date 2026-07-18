@@ -1,117 +1,100 @@
 /**
- * The "live thinking" state (design screen 05). Because /ask returns a single
- * response, we surface progress by stepping through the real pipeline stages
- * on a timer — search, read, match — landing on the last until the answer
- * arrives (at which point the parent swaps this out).
+ * "Assistant is typing" indicator — three animated dots in a chat bubble,
+ * shown while /ask is in flight. Deliberately simple: /ask returns a single
+ * response, so a fabricated step-by-step checklist would be misleading.
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Animated, Easing, StyleSheet, View } from "react-native";
 
-import { Ionicons } from "@expo/vector-icons";
-import { AppText } from "@/components/AppText";
 import { useTheme } from "@/theme/ThemeProvider";
 
-const STEPS = [
-  "Searching trusted sources",
-  "Reading county guides",
-  "Matching places to the map",
-] as const;
-
-const STEP_INTERVAL_MS = 1100;
+// One full cycle per dot; equal length keeps the three dots phase-locked.
+const CYCLE_MS = 900;
+const UP_MS = 250;
+const DOWN_MS = 250;
+const OFFSETS = [0, 150, 300];
 
 export function ThinkingState() {
   const theme = useTheme();
-  const [active, setActive] = useState(0);
-  const pulse = useRef(new Animated.Value(0.4)).current;
+  const values = useRef(OFFSETS.map(() => new Animated.Value(0))).current;
 
   useEffect(() => {
-    // Advance through the steps, then hold on the final one.
-    const id = setInterval(() => {
-      setActive((prev) => Math.min(prev + 1, STEPS.length - 1));
-    }, STEP_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, []);
-
-  useEffect(() => {
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, {
-          toValue: 1,
-          duration: 600,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulse, {
-          toValue: 0.4,
-          duration: 600,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ]),
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [pulse]);
+    const animations = values.map((value, i) => {
+      const lead = OFFSETS[i];
+      const trail = CYCLE_MS - lead - UP_MS - DOWN_MS;
+      return Animated.loop(
+        Animated.sequence([
+          Animated.delay(lead),
+          Animated.timing(value, {
+            toValue: 1,
+            duration: UP_MS,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(value, {
+            toValue: 0,
+            duration: DOWN_MS,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.delay(trail),
+        ]),
+      );
+    });
+    animations.forEach((a) => a.start());
+    return () => animations.forEach((a) => a.stop());
+  }, [values]);
 
   return (
-    <View
-      style={[
-        styles.card,
-        {
-          backgroundColor: theme.colors.card,
-          borderColor: theme.colors.border,
-          borderRadius: theme.radius.card,
-        },
-      ]}
-      accessibilityLabel="TravelPia is thinking"
-    >
-      <View style={styles.headerRow}>
-        <Ionicons name="search" size={16} color={theme.colors.primary} />
-        <AppText variant="bodySemibold">Searching trusted sources</AppText>
-      </View>
-      <View style={styles.steps}>
-        {STEPS.map((label, index) => {
-          const done = index < active;
-          const current = index === active;
-          return (
-            <View key={label} style={styles.stepRow}>
-              {done ? (
-                <Ionicons
-                  name="checkmark-circle"
-                  size={18}
-                  color={theme.colors.success}
-                />
-              ) : current ? (
-                <Animated.View
-                  style={[
-                    styles.dot,
-                    { backgroundColor: theme.colors.primary, opacity: pulse },
-                  ]}
-                />
-              ) : (
-                <View
-                  style={[styles.ring, { borderColor: theme.colors.border }]}
-                />
-              )}
-              <AppText
-                variant="body"
-                color={done || current ? theme.colors.text : theme.colors.textMuted}
-              >
-                {label}
-              </AppText>
-            </View>
-          );
-        })}
+    <View style={styles.row} accessibilityLabel="TravelPia is typing">
+      <View
+        style={[
+          styles.bubble,
+          {
+            backgroundColor: theme.colors.card,
+            borderColor: theme.colors.border,
+            borderRadius: theme.radius.card,
+          },
+        ]}
+      >
+        {values.map((value, i) => (
+          <Animated.View
+            key={i}
+            style={[
+              styles.dot,
+              {
+                backgroundColor: theme.colors.textMuted,
+                opacity: value.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.3, 1],
+                }),
+                transform: [
+                  {
+                    translateY: value.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, -4],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          />
+        ))}
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { padding: 16, borderWidth: 1, gap: 14 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  steps: { gap: 12 },
-  stepRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-  dot: { width: 18, height: 18, borderRadius: 9 },
-  ring: { width: 18, height: 18, borderRadius: 9, borderWidth: 2 },
+  row: { alignItems: "flex-start" },
+  bubble: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    borderWidth: 1,
+    borderBottomLeftRadius: 4,
+  },
+  dot: { width: 8, height: 8, borderRadius: 4 },
 });

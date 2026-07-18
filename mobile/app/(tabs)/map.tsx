@@ -1,5 +1,5 @@
-import { ComingSoon } from "@/components/ComingSoon";
+import { MapScreen } from "@/features/map/MapScreen";
 
 export default function MapRoute() {
-  return <ComingSoon title="Map" icon="map-outline" />;
+  return <MapScreen />;
 }

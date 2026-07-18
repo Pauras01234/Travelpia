@@ -42,6 +42,10 @@ src/
   toggle + county chip, live "thinking" checklist, graceful error/retry) and the
   screen 06 answer payload (grounded badge, prose answer, photo gallery, cited
   sources).
+- **Conversation thread** — Ask is a running chat, not a one-shot box. `useAsk`
+  keeps the message thread and sends the last ~8 turns as `history`, so the
+  backend understands short replies ("okay") and follow-ups ("what about food
+  there?") in context. A "new chat" button in the header clears the thread.
 - **Not yet** — the design's structured, numbered "place cards" need a richer
   `/ask` contract (structured places, not a prose string). Called out in
   `AnswerView.tsx` as a deliberate next step.
@@ -61,6 +65,37 @@ npm start              # then press i (iOS), a (Android), or w (web)
 - Physical device → `http://<your-LAN-ip>:8000` (same Wi-Fi)
 
 Start the backend first (see `../backend/README.md`).
+
+## Map, offline & loading
+
+- **Map tab** (`src/features/map/`) — search + category chips over an
+  interactive pinned map with a bottom detail card (rating, Directions, save).
+  **Both platforms use Leaflet + OpenStreetMap (no API key):** web via
+  react-leaflet (`PlacesMap.web.tsx`), native via Leaflet-in-a-WebView
+  (`PlacesMap.tsx`). This is keyless, so the map works in **Expo Go** on
+  Android/iOS — unlike `react-native-maps`, whose Android tiles need a Google
+  Maps key Expo Go can't provide. Both render real pins and auto-fit to
+  results. Places come from the backend
+  **`GET /places`** search (Serper Places proxy) via `usePlaces`, so any real
+  place is findable — the search box drives the query (debounced), falling back
+  to the active category chip ("Walks"/"Food"/"Sights") when empty.
+- **Loading** — `Skeleton` primitive + `HomeSkeleton` (design HOME · LOADING);
+  the Map tab also shows a skeleton while places load.
+- **Offline** — `useNetworkStatus` (NetInfo) drives `OfflineScreen` (design
+  OFFLINE · SAVED). Wired into the Ask tab: offline → saved-guide screen with
+  "Try to reconnect". Saved items are presentational until offline persistence
+  lands.
+
+### Android Maps API key (required for Android only)
+
+`react-native-maps` on Android needs a Google Maps key; iOS uses Apple Maps (no
+key). Add to `app.json` before an Android build:
+
+```json
+"android": {
+  "config": { "googleMaps": { "apiKey": "<YOUR_ANDROID_MAPS_KEY>" } }
+}
+```
 
 ## Contract
 

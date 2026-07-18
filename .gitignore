@@ -17,3 +17,6 @@ __pycache__/
 check_answer.py
 check_app.py
 debug_gradio.py
+
+# Crash dumps / junk
+*.stackdump

@@ -8,7 +8,8 @@
  * of the /ask contract. Until then we render the grounded prose answer.
  */
 import { Ionicons } from "@expo/vector-icons";
-import { StyleSheet, View } from "react-native";
+import { router } from "expo-router";
+import { Pressable, StyleSheet, View } from "react-native";
 
 import { AppText } from "@/components/AppText";
 import type { AskResponse } from "@/api/types";
@@ -57,6 +58,26 @@ export function AnswerView({ answer }: { answer: AskResponse }) {
 
       <PhotoGallery images={answer.images} />
       <SourceList sources={answer.sources} />
+
+      {answer.grounded && (
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => router.navigate("/map")}
+          style={({ pressed }) => [
+            styles.seeOnMap,
+            {
+              borderColor: theme.colors.primary,
+              borderRadius: theme.radius.control,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+        >
+          <Ionicons name="map-outline" size={16} color={theme.colors.primary} />
+          <AppText variant="bodySemibold" color={theme.colors.primary}>
+            See places on map
+          </AppText>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -80,4 +101,12 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   answerText: { lineHeight: 24 },
+  seeOnMap: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+  },
 });

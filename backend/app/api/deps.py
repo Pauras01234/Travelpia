@@ -15,13 +15,22 @@ from app.core.cache import TTLCache
 from app.core.errors import ConfigurationError
 from app.schemas.ask import AskResponse
 from app.services.images import ImageService
+from app.services.intent import IntentRouter, LLMIntentRouter
 from app.services.llm import LLMClient
+from app.services.places import PlacesService
 from app.services.rag import RagService
 from app.services.search import SearchService
 
 
 def get_response_cache(request: Request) -> TTLCache[AskResponse]:
     return request.app.state.response_cache
+
+
+def get_places_service(
+    request: Request, settings: Settings = Depends(get_settings)
+) -> PlacesService:
+    state = request.app.state
+    return PlacesService(settings, state.http_client, state.places_cache)
 
 
 def get_search_service(
@@ -48,11 +57,18 @@ def get_llm_client(request: Request) -> LLMClient:
     return client
 
 
+def get_intent_router(
+    llm: LLMClient = Depends(get_llm_client),
+) -> IntentRouter:
+    return LLMIntentRouter(llm)
+
+
 def get_rag_service(
     settings: Settings = Depends(get_settings),
     search: SearchService = Depends(get_search_service),
     images: ImageService = Depends(get_image_service),
     llm: LLMClient = Depends(get_llm_client),
+    router: IntentRouter = Depends(get_intent_router),
     response_cache: TTLCache[AskResponse] = Depends(get_response_cache),
 ) -> RagService:
     return RagService(
@@ -60,5 +76,6 @@ def get_rag_service(
         search=search,
         images=images,
         llm=llm,
+        router=router,
         response_cache=response_cache,
     )

@@ -1,5 +1,5 @@
-import { ComingSoon } from "@/components/ComingSoon";
+import { HomeScreen } from "@/features/home/HomeScreen";
 
 export default function HomeRoute() {
-  return <ComingSoon title="Home" icon="home-outline" />;
+  return <HomeScreen />;
 }

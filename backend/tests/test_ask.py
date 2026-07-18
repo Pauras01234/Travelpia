@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.schemas.ask import Image, Source
+from app.services.intent import RouteDecision
 from app.services.search import SearchResult
 from tests.conftest import FakeLLM
 
@@ -55,21 +56,67 @@ def test_ask_rejects_unknown_county(make_client):
     assert resp.json()["error"] == "validation_error"
 
 
-def test_ask_rejects_short_question(make_client):
+def test_ask_rejects_blank_question(make_client):
     client, _ = make_client()
     with client:
-        resp = client.post("/ask", json={"county": "Cork", "question": "hi"})
+        resp = client.post("/ask", json={"county": "Cork", "question": "   "})
     assert resp.status_code == 422
 
 
-def test_ask_returns_404_when_no_grounding(make_client):
-    client, _ = make_client(search=SearchResult([], []))
+def test_ask_soft_reply_when_no_grounding(make_client):
+    # No grounding is a friendly in-conversation reply, not an error card.
+    client, fakes = make_client(search=SearchResult([], []))
     with client:
         resp = client.post(
             "/ask", json={"county": "Mayo", "question": "hidden gems?"}
         )
-    assert resp.status_code == 404
-    assert resp.json()["error"] == "no_results"
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["grounded"] is False
+    assert body["sources"] == []
+    assert "Mayo" in body["answer"]
+
+
+def test_smalltalk_skips_search(make_client):
+    # "Okay" should be answered conversationally with NO web search.
+    client, fakes = make_client(
+        route=RouteDecision(
+            route="chat", reply="Glad that helps! What else can I find?", search_query=""
+        )
+    )
+    with client:
+        resp = client.post("/ask", json={"county": "Galway", "question": "Okay"})
+    body = resp.json()
+    assert resp.status_code == 200
+    assert body["answer"] == "Glad that helps! What else can I find?"
+    assert body["sources"] == []
+    assert body["grounded"] is False
+    # The whole point: no search, no LLM answer-generation call.
+    assert fakes["search"].calls == 0
+    assert fakes["llm"].calls == 0
+
+
+def test_followup_uses_rewritten_query(make_client):
+    # The router resolves "there" → a standalone query used for retrieval.
+    client, fakes = make_client(
+        route=RouteDecision(
+            route="search", reply="", search_query="fresh seafood in Galway Ireland"
+        ),
+    )
+    with client:
+        resp = client.post(
+            "/ask",
+            json={
+                "county": "Galway",
+                "question": "where's good to eat there?",
+                "history": [
+                    {"role": "user", "content": "best coastal walks?"},
+                    {"role": "assistant", "content": "Try the Salthill prom."},
+                ],
+            },
+        )
+    assert resp.status_code == 200
+    assert fakes["search"].last_query == "fresh seafood in Galway Ireland"
 
 
 def test_ask_is_cached_on_repeat(make_client):

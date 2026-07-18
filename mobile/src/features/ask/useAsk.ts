@@ -1,15 +1,25 @@
 /**
- * Ask request lifecycle as a small state machine. Encapsulates cancellation of
- * in-flight requests, error mapping, and the "last query" needed for retry, so
- * the screen stays declarative.
+ * Conversation controller for Ask TravelPia.
+ *
+ * Holds the running thread of messages, sends recent turns as `history` so the
+ * assistant has short-term memory, and manages the request lifecycle
+ * (cancellation, retry-without-duplicating, error mapping). The screen renders
+ * `messages` + `phase` and calls `ask`/`retry`/`editLast`/`reset`.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { askTravelPia } from "@/api/ask";
 import { ApiError } from "@/api/client";
-import type { AskMode, AskResponse } from "@/api/types";
+import type { AskMode, AskResponse, Turn } from "@/api/types";
 
-export type AskStatus = "idle" | "thinking" | "answered" | "error";
+/** How many prior turns to send as context (bounded for cost/latency). */
+const HISTORY_LIMIT = 8;
+
+export type AskPhase = "idle" | "thinking" | "error";
+
+export type ChatMessage =
+  | { id: string; role: "user"; text: string }
+  | { id: string; role: "assistant"; response: AskResponse };
 
 export interface AskErrorInfo {
   title: string;
@@ -17,31 +27,25 @@ export interface AskErrorInfo {
   retryable: boolean;
 }
 
-interface Query {
+interface AskParams {
   county: string;
   question: string;
   mode: AskMode;
 }
 
 export interface AskController {
-  status: AskStatus;
-  answer: AskResponse | null;
+  messages: ChatMessage[];
+  phase: AskPhase;
   error: AskErrorInfo | null;
-  lastQuestion: string | null;
-  submit: (query: Query) => void;
+  ask: (params: AskParams) => void;
   retry: () => void;
+  /** Removes the last (failed) user turn and returns its text to re-edit. */
+  editLast: () => string;
   reset: () => void;
 }
 
 function toErrorInfo(err: unknown): AskErrorInfo {
   if (err instanceof ApiError) {
-    if (err.code === "no_results") {
-      return {
-        title: "No results yet",
-        message: err.message,
-        retryable: false,
-      };
-    }
     return {
       title: "Couldn't reach TravelPia",
       message: err.message,
@@ -56,59 +60,119 @@ function toErrorInfo(err: unknown): AskErrorInfo {
 }
 
 export function useAsk(): AskController {
-  const [status, setStatus] = useState<AskStatus>("idle");
-  const [answer, setAnswer] = useState<AskResponse | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [phase, setPhase] = useState<AskPhase>("idle");
   const [error, setError] = useState<AskErrorInfo | null>(null);
 
+  // Kept in sync with `messages` so we can read the latest thread synchronously
+  // when building history, without stale closures.
+  const messagesRef = useRef<ChatMessage[]>([]);
   const controllerRef = useRef<AbortController | null>(null);
-  const lastQueryRef = useRef<Query | null>(null);
+  const lastParamsRef = useRef<AskParams | null>(null);
+  const idRef = useRef(0);
 
-  const run = useCallback((query: Query) => {
-    // Cancel any request still in flight before starting a new one.
-    controllerRef.current?.abort();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    lastQueryRef.current = query;
+  const nextId = () => `m${idRef.current++}`;
 
-    setError(null);
-    setAnswer(null);
-    setStatus("thinking");
-
-    askTravelPia(query, { signal: controller.signal })
-      .then((res) => {
-        if (controller.signal.aborted) return;
-        setAnswer(res);
-        setStatus("answered");
-      })
-      .catch((err) => {
-        // A superseded/cancelled request must not clobber newer state.
-        if (controller.signal.aborted || err?.name === "AbortError") return;
-        setError(toErrorInfo(err));
-        setStatus("error");
+  const setThread = useCallback(
+    (updater: (prev: ChatMessage[]) => ChatMessage[]) => {
+      setMessages((prev) => {
+        const next = updater(prev);
+        messagesRef.current = next;
+        return next;
       });
+    },
+    [],
+  );
+
+  const buildHistory = useCallback((): Turn[] => {
+    return messagesRef.current
+      .map((m): Turn =>
+        m.role === "user"
+          ? { role: "user", content: m.text }
+          : { role: "assistant", content: m.response.answer },
+      )
+      .slice(-HISTORY_LIMIT);
   }, []);
 
+  const run = useCallback(
+    (params: AskParams, history: Turn[]) => {
+      controllerRef.current?.abort();
+      const controller = new AbortController();
+      controllerRef.current = controller;
+      lastParamsRef.current = params;
+
+      setError(null);
+      setPhase("thinking");
+
+      askTravelPia({ ...params, history }, { signal: controller.signal })
+        .then((res) => {
+          if (controller.signal.aborted) return;
+          setThread((prev) => [
+            ...prev,
+            { id: nextId(), role: "assistant", response: res },
+          ]);
+          setPhase("idle");
+        })
+        .catch((err) => {
+          if (controller.signal.aborted || err?.name === "AbortError") return;
+          setError(toErrorInfo(err));
+          setPhase("error");
+        });
+    },
+    [setThread],
+  );
+
+  const ask = useCallback(
+    (params: AskParams) => {
+      // History is the conversation *before* this new question.
+      const history = buildHistory();
+      setThread((prev) => [
+        ...prev,
+        { id: nextId(), role: "user", text: params.question },
+      ]);
+      run(params, history);
+    },
+    [buildHistory, run, setThread],
+  );
+
   const retry = useCallback(() => {
-    if (lastQueryRef.current) run(lastQueryRef.current);
+    const params = lastParamsRef.current;
+    if (!params) return;
+    // The failed user turn is still in the thread; re-run without re-adding it.
+    const historyWithoutLast = messagesRef.current
+      .slice(0, -1)
+      .map((m): Turn =>
+        m.role === "user"
+          ? { role: "user", content: m.text }
+          : { role: "assistant", content: m.response.answer },
+      )
+      .slice(-HISTORY_LIMIT);
+    run(params, historyWithoutLast);
   }, [run]);
+
+  const editLast = useCallback((): string => {
+    controllerRef.current?.abort();
+    let removedText = "";
+    setThread((prev) => {
+      const last = prev[prev.length - 1];
+      if (last?.role === "user") {
+        removedText = last.text;
+        return prev.slice(0, -1);
+      }
+      return prev;
+    });
+    setError(null);
+    setPhase("idle");
+    return removedText;
+  }, [setThread]);
 
   const reset = useCallback(() => {
     controllerRef.current?.abort();
-    setStatus("idle");
-    setAnswer(null);
+    setThread(() => []);
     setError(null);
-  }, []);
+    setPhase("idle");
+    lastParamsRef.current = null;
+  }, [setThread]);
 
-  // Abort on unmount to avoid setting state on a torn-down screen.
-  useEffect(() => () => controllerRef.current?.abort(), []);
-
-  return {
-    status,
-    answer,
-    error,
-    lastQuestion: lastQueryRef.current?.question ?? null,
-    submit: run,
-    retry,
-    reset,
-  };
+  return { messages, phase, error, ask, retry, editLast, reset };
 }

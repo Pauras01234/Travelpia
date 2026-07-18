@@ -10,3 +10,12 @@ export const COUNTIES = [
 export type County = (typeof COUNTIES)[number];
 
 export const DEFAULT_COUNTY: County = "Galway";
+
+const _CANONICAL = new Map<string, County>(
+  COUNTIES.map((c) => [c.toLowerCase(), c]),
+);
+
+/** Return the canonical county for a free-text name, or null if unrecognised. */
+export function normaliseCounty(name: string): County | null {
+  return _CANONICAL.get(name.trim().toLowerCase()) ?? null;
+}

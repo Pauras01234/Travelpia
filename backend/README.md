@@ -10,9 +10,15 @@ backend can integrate in parallel.
 | Method | Path            | Purpose                                          |
 | ------ | --------------- | ------------------------------------------------ |
 | `POST` | `/ask`          | Grounded Q&A → `{answer, sources, images, ...}`  |
-| `GET`  | `/images`       | Unsplash proxy → `{images}` (key stays server)   |
+| `GET`  | `/images`       | Image search → `{images}` (Serper Google Images) |
+| `GET`  | `/places`       | Map places search → `{places}` (Serper Places)   |
+| `GET`  | `/places/photo` | One representative photo for a place (Serper)    |
 | `GET`  | `/health`       | Liveness                                         |
 | `GET`  | `/health/ready` | Readiness + which capabilities are configured    |
+
+`GET /places?query=restaurants&county=Galway` returns real places with
+coordinates, ratings and categories (for map pins), proxied via Serper's Places
+endpoint so the key stays server-side.
 
 Interactive docs at `/docs` when running.
 
@@ -39,17 +45,37 @@ toggle. `county` must be one of the 32 counties (case-insensitive).
 ```
 routes ──> deps (DI) ──> services ──> external APIs
  (HTTP)                   │
+                          ├─ intent.py  router: chat vs. search + query rewrite
                           ├─ llm.py     provider-agnostic (OpenAI default)
                           ├─ search.py  Serper → Wikipedia fallback
-                          ├─ images.py  Unsplash proxy
-                          └─ rag.py     orchestrates: search ∥ (llm + images)
+                          ├─ images.py  Serper Google Images
+                          ├─ places.py  Serper Places (map pins + photos)
+                          └─ rag.py     route → search ∥ (llm + images)
 ```
+
+### Conversational routing
+
+`/ask` accepts an optional `history` (recent `{role, content}` turns). Each
+message is first sent to the **intent router**, which decides:
+
+- **chat** — greetings, acknowledgements ("okay", "thanks"), small talk, or
+  questions about the assistant → a friendly reply, **no web search**, no
+  sources. (Fixes the "type 'okay' and get a karaoke result" problem.)
+- **search** — a real information need → the router rewrites the message into a
+  standalone, context-resolved query (e.g. "what about food there?" →
+  "food in Galway Ireland") and the RAG path runs as normal.
+
+A no-results search returns a friendly in-conversation reply (200), not a hard
+error. The router fails safe to "search" if its output can't be parsed.
 
 Design choices:
 - **Fully async** — `httpx.AsyncClient` + async OpenAI client; the answer and
   image fetch run concurrently (`asyncio.gather`), roughly halving latency.
 - **Provider-agnostic LLM** — swap OpenAI↔Anthropic via `LLM_PROVIDER`; one
   `LLMClient` interface, no call-site changes.
+- **Images via Serper** — answer-gallery photos, place photos, and map places
+  all use the one Serper key (Google Images/Places). `UNSPLASH_ACCESS_KEY` is
+  no longer used; to switch images back to Unsplash, restore `images.py`.
 - **Soft-fail grounding** — search/image outages degrade gracefully; only a
   total lack of grounding returns `404`, and a missing LLM key returns `503`.
 - **Uniform errors** — every failure returns `{error, detail, request_id}`.

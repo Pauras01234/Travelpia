@@ -1,11 +1,14 @@
 /**
- * Ask TravelPia — the hero Q&A flow (design screens 05 + 06).
+ * Ask TravelPia — the hero Q&A flow (design screens 05 + 06), now a running
+ * conversation thread with short-term memory.
  *
- * One screen, four states driven by {@link useAsk}: idle (prompts), thinking,
- * answered, and error. The county chip and Fast/Detailed toggle set the query
- * context; the input is pinned to the bottom above the keyboard.
+ * States are driven by {@link useAsk}: an empty prompt screen until the first
+ * message, then a scrolling thread of question bubbles and grounded answers,
+ * with a transient "thinking" state and graceful error/retry. Recent turns are
+ * sent as history so follow-ups ("what about food there?") and short replies
+ * ("okay") are understood in context.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -19,8 +22,8 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { AppText } from "@/components/AppText";
 import type { AskMode } from "@/api/types";
-import { DEFAULT_COUNTY, type County } from "@/constants/counties";
 import { SUGGESTED_PROMPTS } from "@/constants/prompts";
+import { useExplore } from "@/features/explore/ExploreContext";
 import { useTheme } from "@/theme/ThemeProvider";
 
 import { AnswerView } from "./components/AnswerView";
@@ -37,28 +40,46 @@ import { useAsk } from "./useAsk";
 export function AskScreen() {
   const theme = useTheme();
   const ask = useAsk();
+  const scrollRef = useRef<ScrollView>(null);
 
-  const [county, setCounty] = useState<County>(DEFAULT_COUNTY);
+  const { county, setCounty, exploreFromAsk } = useExplore();
   const [mode, setMode] = useState<AskMode>("fast");
   const [question, setQuestion] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
 
+  // When a grounded answer arrives, point the Map at the question that produced
+  // it, so switching to the Map tab shows those places as pins.
+  const processedRef = useRef<string | null>(null);
+  useEffect(() => {
+    const msgs = ask.messages;
+    const last = msgs[msgs.length - 1];
+    if (!last || last.role !== "assistant" || last.id === processedRef.current) {
+      return;
+    }
+    processedRef.current = last.id;
+    if (last.response.grounded) {
+      const lastUser = [...msgs].reverse().find((m) => m.role === "user");
+      if (lastUser && lastUser.role === "user") {
+        exploreFromAsk(last.response.county, lastUser.text);
+      }
+    }
+  }, [ask.messages, exploreFromAsk]);
+
   const submit = useCallback(
     (text: string) => {
       const trimmed = text.trim();
-      if (trimmed.length < 3) return;
-      ask.submit({ county, question: trimmed, mode });
+      if (trimmed.length < 1 || ask.phase === "thinking") return;
+      ask.ask({ county, question: trimmed, mode });
       setQuestion("");
     },
     [ask, county, mode],
   );
 
   const handleEdit = useCallback(() => {
-    setQuestion(ask.lastQuestion ?? "");
-    ask.reset();
+    setQuestion(ask.editLast());
   }, [ask]);
 
-  const isIdle = ask.status === "idle";
+  const hasThread = ask.messages.length > 0 || ask.phase !== "idle";
 
   return (
     <SafeAreaView
@@ -73,7 +94,20 @@ export function AskScreen() {
           </View>
           <AppText variant="heading">Ask TravelPia</AppText>
         </View>
-        <CountyChip county={county} onPress={() => setPickerOpen(true)} />
+        <View style={styles.headerActions}>
+          {hasThread && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Start a new conversation"
+              onPress={ask.reset}
+              hitSlop={8}
+              style={({ pressed }) => [styles.newBtn, { opacity: pressed ? 0.6 : 1 }]}
+            >
+              <Ionicons name="create-outline" size={18} color={theme.colors.primary} />
+            </Pressable>
+          )}
+          <CountyChip county={county} onPress={() => setPickerOpen(true)} />
+        </View>
       </View>
 
       <KeyboardAvoidingView
@@ -82,24 +116,28 @@ export function AskScreen() {
         keyboardVerticalOffset={Platform.OS === "ios" ? 8 : 0}
       >
         <ScrollView
+          ref={scrollRef}
           style={styles.flex}
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          onContentSizeChange={() =>
+            hasThread && scrollRef.current?.scrollToEnd({ animated: true })
+          }
         >
-          {isIdle ? (
-            <EmptyState
-              county={county}
-              onPickPrompt={(text) => submit(text)}
-            />
+          {!hasThread ? (
+            <EmptyState county={county} onPickPrompt={(text) => submit(text)} />
           ) : (
             <View style={styles.conversation}>
-              {ask.lastQuestion && <QuestionBubble text={ask.lastQuestion} />}
-              {ask.status === "thinking" && <ThinkingState />}
-              {ask.status === "answered" && ask.answer && (
-                <AnswerView answer={ask.answer} />
+              {ask.messages.map((m) =>
+                m.role === "user" ? (
+                  <QuestionBubble key={m.id} text={m.text} />
+                ) : (
+                  <AnswerView key={m.id} answer={m.response} />
+                ),
               )}
-              {ask.status === "error" && ask.error && (
+              {ask.phase === "thinking" && <ThinkingState />}
+              {ask.phase === "error" && ask.error && (
                 <ErrorRetry
                   title={ask.error.title}
                   message={ask.error.message}
@@ -107,27 +145,11 @@ export function AskScreen() {
                   onEdit={handleEdit}
                 />
               )}
-              {ask.status === "answered" && (
-                <Pressable
-                  onPress={ask.reset}
-                  style={styles.askAgain}
-                  accessibilityRole="button"
-                >
-                  <Ionicons
-                    name="add-circle-outline"
-                    size={18}
-                    color={theme.colors.primary}
-                  />
-                  <AppText variant="bodySemibold" color={theme.colors.primary}>
-                    Ask something else
-                  </AppText>
-                </Pressable>
-              )}
             </View>
           )}
         </ScrollView>
 
-        {/* Footer: mode toggle (idle only) + input */}
+        {/* Footer: mode toggle (empty state only) + input */}
         <View
           style={[
             styles.footer,
@@ -137,15 +159,13 @@ export function AskScreen() {
             },
           ]}
         >
-          {isIdle && (
-            <ModeToggle mode={mode} onChange={setMode} />
-          )}
+          {!hasThread && <ModeToggle mode={mode} onChange={setMode} />}
           <AskInput
             value={question}
             onChangeText={setQuestion}
             onSubmit={() => submit(question)}
             county={county}
-            disabled={ask.status === "thinking"}
+            disabled={ask.phase === "thinking"}
           />
         </View>
       </KeyboardAvoidingView>
@@ -215,6 +235,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   brand: { flexDirection: "row", alignItems: "center", gap: 10 },
+  headerActions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  newBtn: { padding: 4 },
   logo: {
     width: 32,
     height: 32,
@@ -235,13 +257,6 @@ const styles = StyleSheet.create({
   },
   tryLabel: { marginTop: 12, letterSpacing: 0.5 },
   prompts: { gap: 10 },
-  askAgain: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    paddingVertical: 8,
-  },
   footer: {
     paddingHorizontal: 20,
     paddingTop: 12,

@@ -38,10 +38,13 @@ async def ask(
     enforced only when ``AUTH_REQUIRED`` is enabled.
     """
     logger.info(
-        "ask: county=%s mode=%s user=%s q=%r",
+        "ask: county=%s mode=%s user=%s history=%d q=%r",
         payload.county,
         payload.mode.value,
         user.id,
+        len(payload.history),
         payload.question[:80],
     )
-    return await rag.answer(payload.county, payload.question, payload.mode)
+    return await rag.answer(
+        payload.county, payload.question, payload.mode, payload.history
+    )
