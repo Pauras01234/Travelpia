@@ -1,0 +1,1 @@
+"""Travelpia FastAPI backend."""
