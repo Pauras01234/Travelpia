@@ -69,6 +69,63 @@ export async function loginRequest(
   }
 }
 
+export type SignupResult =
+  | { ok: true; data: LoginSuccess }
+  | { ok: false; kind: "conflict"; detail: string }
+  | { ok: false; kind: "unavailable"; message: string };
+
+export async function signupRequest(
+  email: string,
+  phone: string,
+  password: string,
+  fullName?: string | null,
+): Promise<SignupResult> {
+  let response: Response;
+  try {
+    const body: {
+      email: string;
+      phone: string;
+      password: string;
+      full_name?: string;
+    } = { email, phone, password };
+    if (fullName && fullName.trim().length > 0) {
+      body.full_name = fullName.trim();
+    }
+
+    response = await fetch(`${getBaseUrl()}/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  } catch {
+    return { ok: false, kind: "unavailable", message: NETWORK_ERROR_MESSAGE };
+  }
+
+  if (response.status === 409) {
+    let detail = "Unable to create account";
+    try {
+      const body = (await response.json()) as { detail?: unknown };
+      if (typeof body.detail === "string" && body.detail.length > 0) {
+        detail = body.detail;
+      }
+    } catch {
+      // Keep fallback if body isn't JSON.
+    }
+    return { ok: false, kind: "conflict", detail };
+  }
+
+  if (!response.ok) {
+    return { ok: false, kind: "unavailable", message: NETWORK_ERROR_MESSAGE };
+  }
+
+  try {
+    const data = (await response.json()) as LoginSuccess;
+    return { ok: true, data };
+  } catch {
+    return { ok: false, kind: "unavailable", message: NETWORK_ERROR_MESSAGE };
+  }
+}
+
 export async function logoutRequest(
   accessToken: string,
   refreshToken: string,

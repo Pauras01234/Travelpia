@@ -19,3 +19,8 @@ export function isValidPhone(phone: string): boolean {
 export function isNonEmptyPassword(password: string): boolean {
   return password.length > 0;
 }
+
+/** Client-side UX gate — backend still enforces min_length=8. */
+export function isMinLengthPassword(password: string, minLength = 8): boolean {
+  return password.length >= minLength;
+}

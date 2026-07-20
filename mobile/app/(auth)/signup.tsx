@@ -10,18 +10,19 @@ import {
   colors,
 } from "@/components/auth/AuthShared";
 import { useAuth } from "@/contexts/AuthContext";
-import { loginRequest } from "@/lib/api";
+import { signupRequest } from "@/lib/api";
 import {
-  isNonEmptyPassword,
+  isMinLengthPassword,
   isValidEmail,
   isValidPhone,
   normalizePhone,
 } from "@/lib/validation";
 
-export default function LoginScreen() {
+export default function SignupScreen() {
   const { completeLogin } = useAuth();
   const router = useRouter();
 
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -43,21 +44,22 @@ export default function LoginScreen() {
       setFieldError("Enter a phone number in international format (e.g. +353…).");
       return;
     }
-    if (!isNonEmptyPassword(password)) {
-      setFieldError("Enter your password.");
+    if (!isMinLengthPassword(password)) {
+      setFieldError("Password must be at least 8 characters.");
       return;
     }
 
     setSubmitting(true);
     try {
-      const result = await loginRequest(
+      const result = await signupRequest(
         email.trim(),
         normalizePhone(phone),
         password,
+        fullName.trim() || null,
       );
 
       if (!result.ok) {
-        if (result.kind === "unauthorized") {
+        if (result.kind === "conflict") {
           setBannerError(result.detail);
         } else {
           setBannerError(result.message);
@@ -74,19 +76,31 @@ export default function LoginScreen() {
 
   return (
     <AuthScreen
-      title="Sign in"
-      subtitle="Sign in to continue"
+      title="Create account"
+      subtitle="Join Travelpia to get started"
       bannerError={bannerError}
       fieldError={fieldError}
       footer={
         <AuthFooterLink
-          prompt="New here?"
-          actionLabel="Create account"
-          onPress={() => router.push("/(auth)/signup")}
+          prompt="Already have an account?"
+          actionLabel="Sign in"
+          onPress={() => router.push("/(auth)/login")}
           disabled={submitting}
         />
       }
     >
+      <AuthInput
+        label="Full name"
+        value={fullName}
+        onChangeText={setFullName}
+        autoCapitalize="words"
+        autoCorrect={false}
+        textContentType="name"
+        autoComplete="name"
+        placeholder="Optional"
+        editable={!submitting}
+      />
+
       <AuthInput
         label="Email"
         value={email}
@@ -116,10 +130,11 @@ export default function LoginScreen() {
         value={password}
         onChangeText={setPassword}
         secureTextEntry={!showPassword}
-        textContentType="password"
-        autoComplete="password"
+        textContentType="newPassword"
+        autoComplete="password-new"
         placeholder="Password"
         editable={!submitting}
+        hint="Minimum 8 characters"
         trailing={
           <Pressable
             onPress={() => setShowPassword((v) => !v)}
@@ -135,7 +150,7 @@ export default function LoginScreen() {
       />
 
       <AuthButton
-        label="Sign in"
+        label="Create account"
         onPress={onSubmit}
         loading={submitting}
         disabled={submitting}
