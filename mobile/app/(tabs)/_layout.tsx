@@ -4,14 +4,21 @@
  * owned by other work items but wired here so navigation is complete.
  */
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Redirect, Tabs } from "expo-router";
 
+import { useAuth } from "@/contexts/AuthContext";
 import { useTheme } from "@/theme/ThemeProvider";
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
 export default function TabsLayout() {
   const theme = useTheme();
+  const { isSignedIn } = useAuth();
+
+  // Gate the whole authenticated app shell behind a valid session.
+  if (!isSignedIn) {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   const icon =
     (name: IoniconName) =>

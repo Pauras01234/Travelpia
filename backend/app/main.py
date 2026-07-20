@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes import ask, health, images, places
+from app.routers import auth
 from app.config import Settings, get_settings
 from app.core.cache import TTLCache
 from app.core.context import request_id_ctx
@@ -101,6 +102,7 @@ def create_app() -> FastAPI:
     app.include_router(ask.router)
     app.include_router(images.router)
     app.include_router(places.router)
+    app.include_router(auth.router)
     return app
 
 

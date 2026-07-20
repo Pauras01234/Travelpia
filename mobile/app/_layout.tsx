@@ -18,8 +18,10 @@ import {
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+import { ActivityIndicator, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ExploreProvider } from "@/features/explore/ExploreContext";
 import { ThemeProvider, useThemeContext } from "@/theme/ThemeProvider";
 
@@ -51,7 +53,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <ThemeProvider>
         <ExploreProvider>
-          <ThemedNavigation />
+          <AuthProvider>
+            <ThemedNavigation />
+          </AuthProvider>
         </ExploreProvider>
       </ThemeProvider>
     </SafeAreaProvider>
@@ -60,6 +64,25 @@ export default function RootLayout() {
 
 function ThemedNavigation() {
   const { theme, scheme } = useThemeContext();
+  const { isReady } = useAuth();
+
+  // Hold navigation until the persisted session has been read, so we don't
+  // flash the tabs before redirecting an unauthenticated user to login.
+  if (!isReady) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: theme.colors.surface,
+        }}
+      >
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <>
       <StatusBar style={scheme === "dark" ? "light" : "dark"} />
@@ -69,6 +92,7 @@ function ThemedNavigation() {
           contentStyle: { backgroundColor: theme.colors.surface },
         }}
       >
+        <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
       </Stack>
     </>

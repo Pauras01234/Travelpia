@@ -77,6 +77,9 @@ class Settings(BaseSettings):
     supabase_jwt_audience: str = "authenticated"
     # Optional explicit JWKS URL; if empty it is derived from supabase_url.
     supabase_jwks_url: str = ""
+    # Service-role key — backend only, used by the /auth login/logout routes to
+    # talk to Supabase Auth and the profiles table. Never expose to the client.
+    supabase_service_role_key: str = ""
 
     @field_validator("cors_origins")
     @classmethod

@@ -8,6 +8,7 @@ openai>=1.40
 PyJWT[crypto]>=2.8
 tenacity>=8.2
 python-dotenv>=1.0
+supabase>=2.7.0,<3.0.0
 
 # Optional: enable only when LLM_PROVIDER=anthropic
 # anthropic>=0.40
