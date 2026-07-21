@@ -1,27 +1,59 @@
-"""Login and logout routes (Supabase Auth + profiles phone check)."""
+"""Login, logout, and signup routes (Supabase Auth + profiles)."""
 
+import re
 from typing import Annotated, Optional
 
 from fastapi import APIRouter, Header, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from supabase_auth.errors import (
     AuthApiError,
     AuthInvalidCredentialsError,
     AuthRetryableError,
 )
 
-from app.supabase_client import get_supabase
+from app.supabase_client import create_auth_client, get_supabase
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 INVALID_CREDENTIALS_DETAIL = "Invalid email, phone, or password"
 AUTH_UNAVAILABLE_DETAIL = "Authentication service unavailable"
+SIGNUP_UNAVAILABLE_DETAIL = "Unable to create account"
+EMAIL_TAKEN_DETAIL = "An account with this email already exists"
+PHONE_TAKEN_DETAIL = "An account with this phone number already exists"
+
+# Loose email shape check (not full RFC). Password hashing stays on Supabase.
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+# E.164-ish: + then country code (non-zero) and up to 15 digits total.
+_E164_RE = re.compile(r"^\+[1-9]\d{7,14}$")
 
 
 class LoginRequest(BaseModel):
     email: str
     phone: str
     password: str
+
+
+class SignupRequest(BaseModel):
+    email: str
+    phone: str
+    password: str = Field(min_length=8)
+    full_name: Optional[str] = None
+
+    @field_validator("email")
+    @classmethod
+    def validate_email_shape(cls, value: str) -> str:
+        email = value.strip()
+        if not email or not _EMAIL_RE.fullmatch(email):
+            raise ValueError("Invalid email address")
+        return email
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone_e164(cls, value: str) -> str:
+        phone = _normalize_phone(value)
+        if not _E164_RE.fullmatch(phone):
+            raise ValueError("Phone must be in E.164 format (e.g. +353871234567)")
+        return phone
 
 
 class LoginUser(BaseModel):
@@ -58,6 +90,13 @@ def _auth_unavailable() -> HTTPException:
     )
 
 
+def _signup_unavailable() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail=SIGNUP_UNAVAILABLE_DETAIL,
+    )
+
+
 def _invalid_credentials() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -65,13 +104,40 @@ def _invalid_credentials() -> HTTPException:
     )
 
 
+def _email_taken() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=EMAIL_TAKEN_DETAIL,
+    )
+
+
+def _phone_taken() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail=PHONE_TAKEN_DETAIL,
+    )
+
+
+def _profile_phone_exists(supabase, phone: str) -> bool:
+    """True if profiles already has this phone (UNIQUE)."""
+    result = (
+        supabase.table("profiles")
+        .select("id")
+        .eq("phone", phone)
+        .limit(1)
+        .execute()
+    )
+    return bool(result.data)
+
+
 @router.post("/login", response_model=LoginResponse)
 def login(body: LoginRequest) -> LoginResponse:
     supabase = get_supabase()
 
     # 1. Password grant (email + password only — phone checked against profiles next).
+    # Use a throwaway client so the shared service-role client never stores a user JWT.
     try:
-        auth_response = supabase.auth.sign_in_with_password(
+        auth_response = create_auth_client().auth.sign_in_with_password(
             {
                 "email": body.email,
                 "password": body.password,
@@ -135,6 +201,107 @@ def login(body: LoginRequest) -> LoginResponse:
             email=email,
             phone=str(profile["phone"]),
             full_name=profile.get("full_name"),
+        ),
+    )
+
+
+@router.post("/signup", response_model=LoginResponse)
+def signup(body: SignupRequest) -> LoginResponse:
+    """Create Auth user + profile, then return the same token shape as login."""
+    supabase = get_supabase()
+    # Phone already normalized by SignupRequest validator.
+    phone = body.phone
+    created_user_id: Optional[str] = None
+
+    # 1. Phone duplicate check BEFORE create_user — specific 409 (unlike login's opaque 401).
+    # Email uniqueness is left to admin.create_user's native duplicate error below.
+    try:
+        if _profile_phone_exists(supabase, phone):
+            raise _phone_taken()
+    except HTTPException:
+        raise
+    except AuthRetryableError as exc:
+        raise _signup_unavailable() from exc
+    except Exception as exc:
+        raise _signup_unavailable() from exc
+
+    # 2. Create Auth user.
+    # TODO(launch): Re-enable "Confirm email" in Supabase Auth before public launch.
+    # email_confirm=True auto-confirms for local/dev speed (same reason Confirm email
+    # is currently OFF in the dashboard) — do not ship this to production as-is.
+    try:
+        create_response = supabase.auth.admin.create_user(
+            {
+                "email": body.email,
+                "password": body.password,
+                "email_confirm": True,
+            }
+        )
+    except AuthApiError as exc:
+        # Duplicate email (or race) → specific 409 from create_user's own error.
+        message = str(getattr(exc, "message", "") or exc).lower()
+        if "already" in message or "registered" in message or "exists" in message:
+            raise _email_taken() from exc
+        raise _signup_unavailable() from exc
+    except AuthRetryableError as exc:
+        raise _signup_unavailable() from exc
+    except Exception as exc:
+        raise _signup_unavailable() from exc
+
+    if create_response.user is None or not create_response.user.id:
+        raise _signup_unavailable()
+
+    created_user_id = str(create_response.user.id)
+    email = create_response.user.email or body.email
+
+    # 3. Insert matching profiles row. On failure, delete the Auth user so we
+    # never leave an orphaned auth.users row without a profile (hit that bug by hand).
+    profile_payload = {
+        "id": created_user_id,
+        "phone": phone,
+        "full_name": body.full_name,
+    }
+    try:
+        supabase.table("profiles").insert(profile_payload).execute()
+    except Exception as exc:
+        try:
+            supabase.auth.admin.delete_user(created_user_id)
+        except Exception:
+            # Best-effort compensation; still fail closed below.
+            pass
+        # Phone UNIQUE race between check and insert → specific 409 after cleanup.
+        message = str(exc).lower()
+        if "duplicate" in message or "unique" in message:
+            raise _phone_taken() from exc
+        raise _signup_unavailable() from exc
+
+    # 4. Auto-login: same credential grant + response shape as /auth/login.
+    # Throwaway client — must not pollute the shared admin client (see create_auth_client).
+    try:
+        auth_response = create_auth_client().auth.sign_in_with_password(
+            {
+                "email": body.email,
+                "password": body.password,
+            }
+        )
+    except (AuthApiError, AuthInvalidCredentialsError, AuthRetryableError) as exc:
+        raise _signup_unavailable() from exc
+    except Exception as exc:
+        raise _signup_unavailable() from exc
+
+    session = auth_response.session
+    if session is None or auth_response.user is None:
+        raise _signup_unavailable()
+
+    return LoginResponse(
+        access_token=session.access_token,
+        refresh_token=session.refresh_token,
+        expires_in=int(session.expires_in),
+        user=LoginUser(
+            id=created_user_id,
+            email=email,
+            phone=phone,
+            full_name=body.full_name,
         ),
     )
 
