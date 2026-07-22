@@ -152,15 +152,15 @@ export function useAsk(): AskController {
 
   const editLast = useCallback((): string => {
     controllerRef.current?.abort();
-    let removedText = "";
-    setThread((prev) => {
-      const last = prev[prev.length - 1];
-      if (last?.role === "user") {
-        removedText = last.text;
-        return prev.slice(0, -1);
-      }
-      return prev;
-    });
+    // Read synchronously from the ref — a state updater runs during a later
+    // render, so capturing the text inside setThread would return "" here.
+    const last = messagesRef.current[messagesRef.current.length - 1];
+    const removedText = last?.role === "user" ? last.text : "";
+    if (removedText) {
+      setThread((prev) =>
+        prev[prev.length - 1]?.role === "user" ? prev.slice(0, -1) : prev,
+      );
+    }
     setError(null);
     setPhase("idle");
     return removedText;

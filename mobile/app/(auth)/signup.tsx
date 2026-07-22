@@ -84,7 +84,7 @@ export default function SignupScreen() {
         <AuthFooterLink
           prompt="Already have an account?"
           actionLabel="Sign in"
-          onPress={() => router.push("/(auth)/login")}
+          onPress={() => router.push("/login")}
           disabled={submitting}
         />
       }

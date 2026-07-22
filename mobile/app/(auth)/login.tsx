@@ -82,7 +82,7 @@ export default function LoginScreen() {
         <AuthFooterLink
           prompt="New here?"
           actionLabel="Create account"
-          onPress={() => router.push("/(auth)/signup")}
+          onPress={() => router.push("/signup")}
           disabled={submitting}
         />
       }

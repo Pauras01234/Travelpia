@@ -17,7 +17,7 @@ export default function TabsLayout() {
 
   // Gate the whole authenticated app shell behind a valid session.
   if (!isSignedIn) {
-    return <Redirect href="/(auth)/login" />;
+    return <Redirect href="/login" />;
   }
 
   const icon =
