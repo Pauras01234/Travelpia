@@ -10,6 +10,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+import type { MapPlace } from "@/api/types";
 import { AppText } from "@/components/AppText";
 import { Skeleton } from "@/components/Skeleton";
 import { CountyPickerModal } from "@/features/ask/components/CountyPickerModal";
@@ -27,10 +28,14 @@ const DEBOUNCE_MS = 450;
 export function MapScreen() {
   const theme = useTheme();
 
-  const { county, setCounty, mapQuery, setMapQuery } = useExplore();
+  const { county, setCounty, mapQuery, setMapQuery, focusPlaces, setFocusPlaces } =
+    useExplore();
   const [filter, setFilter] = useState<MapFilterKey>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Places we were asked to focus (Saved place tap, or an Ask answer's places).
+  // When present, the map shows exactly these instead of the search results.
+  const [focused, setFocused] = useState<MapPlace[]>([]);
 
   // Typed / Ask-provided query wins; otherwise use the active chip's phrase.
   const targetQuery = useMemo(
@@ -47,19 +52,36 @@ export function MapScreen() {
 
   const { places, loading, error } = usePlaces(county, query);
 
+  // Consume requested focus places (Saved place tap / Ask answer): show + select.
+  useEffect(() => {
+    if (focusPlaces.length === 0) return;
+    setFocused(focusPlaces);
+    setSelectedId(focusPlaces[0].id);
+    setFocusPlaces([]);
+  }, [focusPlaces, setFocusPlaces]);
+
+  // When focus places are set, show exactly those; otherwise the search results.
+  const displayPlaces = focused.length > 0 ? focused : places;
+
   // Keep the selection valid as results change; default to the first.
   useEffect(() => {
-    if (loading) return;
-    if (places.length === 0) {
+    if (loading && focused.length === 0) return;
+    if (displayPlaces.length === 0) {
       setSelectedId(null);
       return;
     }
     setSelectedId((current) =>
-      current && places.some((p) => p.id === current) ? current : places[0].id,
+      current && displayPlaces.some((p) => p.id === current)
+        ? current
+        : displayPlaces[0].id,
     );
-  }, [places, loading]);
+  }, [displayPlaces, loading, focused]);
 
-  const selected = places.find((p) => p.id === selectedId) ?? null;
+  const selected = displayPlaces.find((p) => p.id === selectedId) ?? null;
+
+  // Clear focus when the user actively searches/filters/switches county, so
+  // focused pins don't linger over unrelated results.
+  const clearFocus = () => setFocused([]);
 
   return (
     <SafeAreaView
@@ -68,7 +90,14 @@ export function MapScreen() {
     >
       <View style={styles.controls}>
         <View style={styles.searchRow}>
-          <SearchBar value={mapQuery} onChangeText={setMapQuery} county={county} />
+          <SearchBar
+            value={mapQuery}
+            onChangeText={(t) => {
+              setMapQuery(t);
+              clearFocus();
+            }}
+            county={county}
+          />
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Change county"
@@ -85,23 +114,30 @@ export function MapScreen() {
             <Ionicons name="options-outline" size={20} color={theme.colors.text} />
           </Pressable>
         </View>
-        <FilterChips county={county} value={filter} onChange={setFilter} />
+        <FilterChips
+          county={county}
+          value={filter}
+          onChange={(f) => {
+            setFilter(f);
+            clearFocus();
+          }}
+        />
       </View>
 
       <View style={styles.mapArea}>
-        {loading ? (
+        {loading && focused.length === 0 ? (
           <MapSkeleton />
         ) : (
           <PlacesMap
             county={county}
-            places={places}
+            places={displayPlaces}
             selectedId={selectedId}
             onSelect={setSelectedId}
           />
         )}
 
         {/* Subtle refreshing indicator when results reload over an existing map */}
-        {loading && places.length > 0 && (
+        {loading && displayPlaces.length > 0 && (
           <View style={styles.refreshing} pointerEvents="none">
             <ActivityIndicator size="small" color={theme.colors.primary} />
           </View>
@@ -115,7 +151,7 @@ export function MapScreen() {
           </View>
         )}
 
-        {!loading && !error && places.length === 0 && (
+        {!loading && !error && displayPlaces.length === 0 && (
           <View style={styles.overlay} pointerEvents="none">
             <AppText variant="bodyMedium" color={theme.colors.textMuted} center>
               No places found for "{query}" in {county}.
@@ -136,6 +172,7 @@ export function MapScreen() {
         onSelect={(c) => {
           setCounty(c);
           setMapQuery("");
+          clearFocus();
         }}
         onClose={() => setPickerOpen(false)}
       />

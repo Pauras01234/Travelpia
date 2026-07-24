@@ -30,6 +30,12 @@ def test_ask_returns_answer_sources_and_images(make_client):
     assert body["answer"] == "Galway is made for coastal strolls."
     assert len(body["sources"]) == 2
     assert body["images"][0]["credit"] == "Photo by A"
+    assert body["places"][0]["name"] == "Brasserie On The Corner"
+    assert fakes["places"].last_call == (
+        "best coastal walks? Galway Ireland",
+        "Galway",
+        10,
+    )
     assert body["county"] == "Galway"
     assert body["grounded"] is True
     assert body["cached"] is False
@@ -74,6 +80,7 @@ def test_ask_soft_reply_when_no_grounding(make_client):
     body = resp.json()
     assert body["grounded"] is False
     assert body["sources"] == []
+    assert body["places"] == []
     assert "Mayo" in body["answer"]
 
 
@@ -90,6 +97,7 @@ def test_smalltalk_skips_search(make_client):
     assert resp.status_code == 200
     assert body["answer"] == "Glad that helps! What else can I find?"
     assert body["sources"] == []
+    assert body["places"] == []
     assert body["grounded"] is False
     # The whole point: no search, no LLM answer-generation call.
     assert fakes["search"].calls == 0

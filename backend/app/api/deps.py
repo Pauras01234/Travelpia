@@ -69,6 +69,7 @@ def get_rag_service(
     images: ImageService = Depends(get_image_service),
     llm: LLMClient = Depends(get_llm_client),
     router: IntentRouter = Depends(get_intent_router),
+    places: PlacesService = Depends(get_places_service),
     response_cache: TTLCache[AskResponse] = Depends(get_response_cache),
 ) -> RagService:
     return RagService(
@@ -77,5 +78,6 @@ def get_rag_service(
         images=images,
         llm=llm,
         router=router,
+        places=places,
         response_cache=response_cache,
     )

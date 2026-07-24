@@ -13,6 +13,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 
 import { AppText } from "@/components/AppText";
 import type { AskResponse } from "@/api/types";
+import { useExplore } from "@/features/explore/ExploreContext";
 import { useTheme } from "@/theme/ThemeProvider";
 
 import { PhotoGallery } from "./PhotoGallery";
@@ -20,7 +21,13 @@ import { SourceList } from "./SourceList";
 
 export function AnswerView({ answer }: { answer: AskResponse }) {
   const theme = useTheme();
+  const { setFocusPlaces } = useExplore();
   const sourceCount = answer.sources.length;
+
+  const seeOnMap = () => {
+    setFocusPlaces(answer.places);
+    router.navigate("/map");
+  };
 
   return (
     <View style={styles.wrap}>
@@ -59,10 +66,10 @@ export function AnswerView({ answer }: { answer: AskResponse }) {
       <PhotoGallery images={answer.images} />
       <SourceList sources={answer.sources} />
 
-      {answer.grounded && (
+      {answer.places.length > 0 && (
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.navigate("/map")}
+          onPress={seeOnMap}
           style={({ pressed }) => [
             styles.seeOnMap,
             {

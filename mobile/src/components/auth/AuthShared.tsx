@@ -1,95 +1,78 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+/**
+ * Shared auth UI, styled on the TravelPia design system (design screen 03).
+ * Uses the app ThemeProvider so login/signup match the app and adapt to
+ * light/dark automatically. Import these from both auth screens — don't
+ * duplicate styling.
+ */
+import { useState, type ReactNode } from "react";
+import { Ionicons } from "@expo/vector-icons";
 import {
   ActivityIndicator,
-  Animated,
-  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   View,
   type TextInputProps,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import Svg, {
-  Defs,
-  LinearGradient as SvgLinearGradient,
-  Path,
-  Rect,
-  Stop,
-} from "react-native-svg";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-/** Shared auth theme — import from both login and signup; do not duplicate. */
-export const colors = {
-  navy: "#111827",
-  accent: "#E07856",
-  white: "#ffffff",
-  background: "#f8fafc",
-  card: "#ffffff",
-  text: "#111827",
-  textMuted: "#6b7280",
-  label: "#374151",
-  border: "#d1d5db",
-  bannerBg: "#fef2f2",
-  bannerBorder: "#fecaca",
-  bannerText: "#991b1b",
-  fieldError: "#b91c1c",
-  hint: "#9ca3af",
-};
+import { AppText } from "@/components/AppText";
+import { useTheme } from "@/theme/ThemeProvider";
 
-export const spacing = {
-  xs: 6,
-  sm: 12,
-  md: 16,
-  lg: 24,
-  xl: 32,
-};
+type IoniconName = keyof typeof Ionicons.glyphMap;
 
-const HEADER_HEIGHT = 220;
-
+// -- Input -----------------------------------------------------------------
 type AuthInputProps = TextInputProps & {
   label: string;
   hint?: string;
-  trailing?: ReactNode;
+  leadingIcon?: IoniconName;
+  /** Renders a password field with a built-in show/hide eye toggle. */
+  secure?: boolean;
 };
 
 export function AuthInput({
   label,
   hint,
-  trailing,
+  leadingIcon,
+  secure,
   style,
   onFocus,
   onBlur,
+  editable = true,
   ...rest
 }: AuthInputProps) {
+  const theme = useTheme();
   const [focused, setFocused] = useState(false);
-  const borderAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(borderAnim, {
-      toValue: focused ? 1 : 0,
-      duration: 180,
-      easing: Easing.out(Easing.quad),
-      useNativeDriver: false,
-    }).start();
-  }, [focused, borderAnim]);
-
-  const borderColor = borderAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [colors.border, colors.accent],
-  });
+  const [show, setShow] = useState(false);
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-      <Animated.View style={[styles.inputShell, { borderColor }]}>
+      <AppText variant="caption" color={theme.colors.textMuted} style={styles.label}>
+        {label}
+      </AppText>
+      <View
+        style={[
+          styles.inputShell,
+          {
+            backgroundColor: theme.colors.card,
+            borderColor: focused ? theme.colors.primary : theme.colors.border,
+            borderRadius: theme.radius.control,
+            opacity: editable ? 1 : 0.6,
+          },
+        ]}
+      >
+        {leadingIcon ? (
+          <Ionicons name={leadingIcon} size={18} color={theme.colors.textMuted} />
+        ) : null}
         <TextInput
           {...rest}
-          style={[styles.input, trailing ? styles.inputWithTrailing : null, style]}
-          placeholderTextColor={colors.hint}
+          editable={editable}
+          secureTextEntry={secure ? !show : rest.secureTextEntry}
+          placeholderTextColor={theme.colors.textMuted}
+          style={[styles.input, { color: theme.colors.text }, style]}
           onFocus={(e) => {
             setFocused(true);
             onFocus?.(e);
@@ -99,13 +82,31 @@ export function AuthInput({
             onBlur?.(e);
           }}
         />
-        {trailing ? <View style={styles.trailing}>{trailing}</View> : null}
-      </Animated.View>
-      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
+        {secure ? (
+          <Pressable
+            onPress={() => setShow((v) => !v)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={show ? "Hide password" : "Show password"}
+          >
+            <Ionicons
+              name={show ? "eye-off-outline" : "eye-outline"}
+              size={20}
+              color={theme.colors.textMuted}
+            />
+          </Pressable>
+        ) : null}
+      </View>
+      {hint ? (
+        <AppText variant="caption" color={theme.colors.textMuted}>
+          {hint}
+        </AppText>
+      ) : null}
     </View>
   );
 }
 
+// -- Primary button --------------------------------------------------------
 type AuthButtonProps = {
   label: string;
   onPress: () => void;
@@ -119,27 +120,67 @@ export function AuthButton({
   loading = false,
   disabled = false,
 }: AuthButtonProps) {
+  const theme = useTheme();
+  const isDisabled = disabled || loading;
   return (
     <Pressable
       onPress={onPress}
-      disabled={disabled || loading}
+      disabled={isDisabled}
       accessibilityRole="button"
-      accessibilityState={{ disabled: disabled || loading }}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
       style={({ pressed }) => [
         styles.button,
-        (disabled || loading) && styles.buttonDisabled,
-        pressed && !disabled && !loading && styles.buttonPressed,
+        {
+          backgroundColor: theme.colors.accent,
+          borderRadius: theme.radius.control,
+          opacity: isDisabled ? 0.5 : pressed ? 0.85 : 1,
+        },
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={colors.white} />
+        <ActivityIndicator color={theme.colors.onAccent} />
       ) : (
-        <Text style={styles.buttonText}>{label}</Text>
+        <AppText variant="bodySemibold" color={theme.colors.onAccent}>
+          {label}
+        </AppText>
       )}
     </Pressable>
   );
 }
 
+// -- Footer link -----------------------------------------------------------
+type AuthFooterLinkProps = {
+  prompt: string;
+  actionLabel: string;
+  onPress: () => void;
+  disabled?: boolean;
+};
+
+export function AuthFooterLink({
+  prompt,
+  actionLabel,
+  onPress,
+  disabled,
+}: AuthFooterLinkProps) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      style={styles.footerRow}
+    >
+      <AppText variant="body" color={theme.colors.textMuted}>
+        {prompt}{" "}
+      </AppText>
+      <AppText variant="bodySemibold" color={theme.colors.accent}>
+        {actionLabel}
+      </AppText>
+    </Pressable>
+  );
+}
+
+// -- Screen shell ----------------------------------------------------------
 type AuthScreenProps = {
   title: string;
   subtitle: string;
@@ -157,299 +198,107 @@ export function AuthScreen({
   footer,
   children,
 }: AuthScreenProps) {
-  const insets = useSafeAreaInsets();
-  const cardAnim = useRef(new Animated.Value(0)).current;
-  const bannerAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.timing(cardAnim, {
-      toValue: 1,
-      duration: 200,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [cardAnim]);
-
-  useEffect(() => {
-    if (bannerError) {
-      bannerAnim.setValue(0);
-      Animated.timing(bannerAnim, {
-        toValue: 1,
-        duration: 200,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: true,
-      }).start();
-    } else {
-      bannerAnim.setValue(0);
-    }
-  }, [bannerError, bannerAnim]);
-
-  const cardTranslateY = cardAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [18, 0],
-  });
-
-  const bannerTranslateY = bannerAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-8, 0],
-  });
-
+  const theme = useTheme();
   return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    <SafeAreaView
+      style={[styles.safe, { backgroundColor: theme.colors.surface }]}
+      edges={["top", "left", "right", "bottom"]}
     >
-      <View style={[styles.header, { paddingTop: insets.top }]}>
-        <Svg
-          width="100%"
-          height="100%"
-          viewBox="0 0 390 220"
-          preserveAspectRatio="xMidYMid slice"
-          style={StyleSheet.absoluteFill}
-        >
-          <Defs>
-            <SvgLinearGradient id="authHeaderGrad" x1="0" y1="0" x2="1" y2="1">
-              <Stop offset="0" stopColor={colors.navy} stopOpacity="1" />
-              <Stop offset="1" stopColor={colors.accent} stopOpacity="1" />
-            </SvgLinearGradient>
-          </Defs>
-          <Rect x="0" y="0" width="390" height="220" fill="url(#authHeaderGrad)" />
-          {/* Simple mountain line-art motif */}
-          <Path
-            d="M40 170 L120 95 L165 130 L230 70 L350 170"
-            stroke="rgba(255,255,255,0.28)"
-            strokeWidth="2"
-            fill="none"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <Path
-            d="M195 58 L195 42 M187 50 L203 50"
-            stroke="rgba(255,255,255,0.35)"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
-          <Path
-            d="M195 42 L201 48 L195 46 L189 48 Z"
-            fill="rgba(255,255,255,0.35)"
-          />
-        </Svg>
-        <View style={styles.headerCopy}>
-          <Text style={styles.brand}>Travelpia</Text>
-        </View>
-      </View>
-
-      <Animated.View
-        style={[
-          styles.card,
-          {
-            opacity: cardAnim,
-            transform: [{ translateY: cardTranslateY }],
-            paddingBottom: Math.max(insets.bottom, spacing.lg),
-          },
-        ]}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
+          contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
-          contentContainerStyle={styles.cardContent}
           showsVerticalScrollIndicator={false}
-          bounces={false}
         >
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
+          <View style={[styles.logo, { backgroundColor: theme.colors.primary }]}>
+            <Ionicons name="location" size={22} color={theme.colors.onPrimary} />
+          </View>
+
+          <AppText variant="display" style={styles.title}>
+            {title}
+          </AppText>
+          <AppText variant="body" color={theme.colors.textMuted} style={styles.subtitle}>
+            {subtitle}
+          </AppText>
 
           {bannerError ? (
-            <Animated.View
+            <View
               style={[
                 styles.banner,
                 {
-                  opacity: bannerAnim,
-                  transform: [{ translateY: bannerTranslateY }],
+                  backgroundColor: theme.colors.card,
+                  borderColor: theme.colors.error,
+                  borderRadius: theme.radius.control,
                 },
               ]}
               accessibilityRole="alert"
             >
-              <Text style={styles.bannerText}>{bannerError}</Text>
-            </Animated.View>
+              <Ionicons name="alert-circle" size={16} color={theme.colors.error} />
+              <AppText variant="bodyMedium" color={theme.colors.error} style={styles.flex}>
+                {bannerError}
+              </AppText>
+            </View>
           ) : null}
 
           {fieldError ? (
-            <Text style={styles.fieldError}>{fieldError}</Text>
+            <AppText variant="caption" color={theme.colors.error} style={styles.fieldError}>
+              {fieldError}
+            </AppText>
           ) : null}
 
-          {children}
+          <View style={styles.form}>{children}</View>
 
-          {footer}
+          <View style={styles.footer}>{footer}</View>
         </ScrollView>
-      </Animated.View>
-    </KeyboardAvoidingView>
-  );
-}
-
-type AuthFooterLinkProps = {
-  prompt: string;
-  actionLabel: string;
-  onPress: () => void;
-  disabled?: boolean;
-};
-
-export function AuthFooterLink({
-  prompt,
-  actionLabel,
-  onPress,
-  disabled,
-}: AuthFooterLinkProps) {
-  return (
-    <View style={styles.footer}>
-      <Text style={styles.footerPrompt}>{prompt}</Text>
-      <Pressable
-        onPress={onPress}
-        disabled={disabled}
-        accessibilityRole="link"
-        hitSlop={8}
-      >
-        <Text style={styles.footerAction}>{actionLabel}</Text>
-      </Pressable>
-    </View>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: colors.background,
+  safe: { flex: 1 },
+  flex: { flex: 1 },
+  content: { padding: 24, paddingTop: 16, gap: 6, flexGrow: 1 },
+  logo: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
   },
-  header: {
-    height: HEADER_HEIGHT,
-    justifyContent: "flex-end",
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.xl + 8,
-  },
-  headerCopy: {
-    zIndex: 1,
-  },
-  brand: {
-    fontSize: 30,
-    fontWeight: "700",
-    color: colors.white,
-    letterSpacing: 0.2,
-  },
-  card: {
-    flex: 1,
-    marginTop: -24,
-    backgroundColor: colors.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: spacing.lg,
-  },
-  cardContent: {
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.lg,
-    maxWidth: 440,
-    width: "100%",
-    alignSelf: "center",
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: "700",
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  subtitle: {
-    fontSize: 15,
-    color: colors.textMuted,
-    marginBottom: spacing.lg,
-  },
+  title: { marginBottom: 4 },
+  subtitle: { marginBottom: 20 },
   banner: {
-    backgroundColor: colors.bannerBg,
-    borderColor: colors.bannerBorder,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 10,
-    marginBottom: spacing.md,
-  },
-  bannerText: {
-    color: colors.bannerText,
-    fontSize: 14,
-  },
-  fieldError: {
-    color: colors.fieldError,
-    fontSize: 13,
-    marginBottom: spacing.sm,
-  },
-  field: {
-    marginBottom: 14,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: colors.label,
-    marginBottom: spacing.xs,
-  },
-  inputShell: {
-    borderWidth: 1,
-    borderRadius: 12,
-    backgroundColor: colors.white,
-    position: "relative",
-  },
-  input: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 16,
-    fontSize: 16,
-    color: colors.text,
-  },
-  inputWithTrailing: {
-    paddingRight: 64,
-  },
-  trailing: {
-    position: "absolute",
-    right: spacing.sm,
-    top: 0,
-    bottom: 0,
-    justifyContent: "center",
-  },
-  hint: {
-    marginTop: 6,
-    fontSize: 12,
-    color: colors.hint,
-  },
-  button: {
-    marginTop: 18,
-    backgroundColor: colors.navy,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-    justifyContent: "center",
-    minHeight: 48,
-  },
-  buttonPressed: {
-    opacity: 0.88,
-    transform: [{ scale: 0.98 }],
-  },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
-  buttonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  footer: {
-    marginTop: spacing.lg,
     flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
     alignItems: "center",
-    gap: 4,
+    gap: 8,
+    padding: 12,
+    borderWidth: 1,
+    marginBottom: 12,
   },
-  footerPrompt: {
-    fontSize: 14,
-    color: colors.textMuted,
+  fieldError: { marginBottom: 8 },
+  form: { gap: 16 },
+  field: { gap: 6 },
+  label: { letterSpacing: 0.3 },
+  inputShell: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    height: 52,
+    borderWidth: 1,
   },
-  footerAction: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.accent,
+  input: { flex: 1, fontSize: 15, paddingVertical: 0 },
+  button: {
+    height: 52,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
   },
+  footer: { marginTop: "auto", paddingTop: 24, alignItems: "center" },
+  footerRow: { flexDirection: "row", alignItems: "center", justifyContent: "center" },
 });

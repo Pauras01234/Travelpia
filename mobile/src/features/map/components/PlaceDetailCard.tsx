@@ -10,6 +10,7 @@ import { fetchPlacePhoto } from "@/api/places";
 import type { MapPlace } from "@/api/types";
 import { AppText } from "@/components/AppText";
 import { StarRating } from "@/components/StarRating";
+import { useSavedPlaces } from "@/features/saved/SavedPlacesContext";
 import { useTheme } from "@/theme/ThemeProvider";
 
 import { categoryColorRole } from "../places";
@@ -22,7 +23,8 @@ export function PlaceDetailCard({
   county: string;
 }) {
   const theme = useTheme();
-  const [saved, setSaved] = useState(false);
+  const { isSaved, toggle } = useSavedPlaces();
+  const saved = isSaved(place.id);
   const [photo, setPhoto] = useState<string | null>(null);
 
   // Lazily fetch a photo for the selected place; fall back to the colour block.
@@ -110,7 +112,7 @@ export function PlaceDetailCard({
           accessibilityRole="button"
           accessibilityLabel={saved ? "Remove from saved" : "Save place"}
           accessibilityState={{ selected: saved }}
-          onPress={() => setSaved((s) => !s)}
+          onPress={() => toggle(place)}
           style={({ pressed }) => [
             styles.save,
             {

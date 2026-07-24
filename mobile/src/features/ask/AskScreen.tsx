@@ -8,7 +8,7 @@
  * sent as history so follow-ups ("what about food there?") and short replies
  * ("okay") are understood in context.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -42,28 +42,10 @@ export function AskScreen() {
   const ask = useAsk();
   const scrollRef = useRef<ScrollView>(null);
 
-  const { county, setCounty, exploreFromAsk } = useExplore();
+  const { county, setCounty } = useExplore();
   const [mode, setMode] = useState<AskMode>("fast");
   const [question, setQuestion] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
-
-  // When a grounded answer arrives, point the Map at the question that produced
-  // it, so switching to the Map tab shows those places as pins.
-  const processedRef = useRef<string | null>(null);
-  useEffect(() => {
-    const msgs = ask.messages;
-    const last = msgs[msgs.length - 1];
-    if (!last || last.role !== "assistant" || last.id === processedRef.current) {
-      return;
-    }
-    processedRef.current = last.id;
-    if (last.response.grounded) {
-      const lastUser = [...msgs].reverse().find((m) => m.role === "user");
-      if (lastUser && lastUser.role === "user") {
-        exploreFromAsk(last.response.county, lastUser.text);
-      }
-    }
-  }, [ask.messages, exploreFromAsk]);
 
   const submit = useCallback(
     (text: string) => {

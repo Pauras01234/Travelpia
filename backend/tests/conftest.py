@@ -143,6 +143,7 @@ def make_client():
             images=fake_images,
             llm=fake_llm,
             router=fake_router,
+            places=fake_places,
             response_cache=response_cache,
         )
 

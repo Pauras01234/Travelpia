@@ -1,13 +1,11 @@
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, Text } from "react-native";
 
 import {
   AuthButton,
   AuthFooterLink,
   AuthInput,
   AuthScreen,
-  colors,
 } from "@/components/auth/AuthShared";
 import { useAuth } from "@/contexts/AuthContext";
 import { loginRequest } from "@/lib/api";
@@ -25,7 +23,6 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
 
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [bannerError, setBannerError] = useState<string | null>(null);
@@ -74,14 +71,14 @@ export default function LoginScreen() {
 
   return (
     <AuthScreen
-      title="Sign in"
-      subtitle="Sign in to continue"
+      title="Welcome back"
+      subtitle="Log in to keep exploring Ireland."
       bannerError={bannerError}
       fieldError={fieldError}
       footer={
         <AuthFooterLink
-          prompt="New here?"
-          actionLabel="Create account"
+          prompt="New to TravelPia?"
+          actionLabel="Create an account"
           onPress={() => router.push("/signup")}
           disabled={submitting}
         />
@@ -89,6 +86,7 @@ export default function LoginScreen() {
     >
       <AuthInput
         label="Email"
+        leadingIcon="mail-outline"
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
@@ -102,6 +100,7 @@ export default function LoginScreen() {
 
       <AuthInput
         label="Phone"
+        leadingIcon="call-outline"
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
@@ -113,29 +112,18 @@ export default function LoginScreen() {
 
       <AuthInput
         label="Password"
+        leadingIcon="lock-closed-outline"
+        secure
         value={password}
         onChangeText={setPassword}
-        secureTextEntry={!showPassword}
         textContentType="password"
         autoComplete="password"
         placeholder="Password"
         editable={!submitting}
-        trailing={
-          <Pressable
-            onPress={() => setShowPassword((v) => !v)}
-            disabled={submitting}
-            accessibilityRole="button"
-            accessibilityLabel={showPassword ? "Hide password" : "Show password"}
-          >
-            <Text style={{ color: colors.navy, fontSize: 14, fontWeight: "600" }}>
-              {showPassword ? "Hide" : "Show"}
-            </Text>
-          </Pressable>
-        }
       />
 
       <AuthButton
-        label="Sign in"
+        label="Log in"
         onPress={onSubmit}
         loading={submitting}
         disabled={submitting}

@@ -62,6 +62,9 @@ export default function TabsLayout() {
         name="profile"
         options={{ title: "Profile", tabBarIcon: icon("person-outline") }}
       />
+      {/* Detail screen inside the tab navigator (keeps the tab bar visible),
+          hidden from the tab bar itself. */}
+      <Tabs.Screen name="saved" options={{ href: null }} />
     </Tabs>
   );
 }

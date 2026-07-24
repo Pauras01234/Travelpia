@@ -100,7 +100,7 @@ const DEFAULT_PLACE: Place = {
   longitude: -9.0568,
 };
 
-function getWeatherDetails(code: number): {
+export function getWeatherDetails(code: number): {
   description: string;
   kind: WeatherKind;
 } {

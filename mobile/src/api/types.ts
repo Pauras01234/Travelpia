@@ -36,6 +36,8 @@ export interface AskResponse {
   answer: string;
   sources: Source[];
   images: AskImage[];
+  /** Real places (with coordinates) for the topic, to pin on the map. */
+  places: MapPlace[];
   county: string;
   mode: AskMode;
   grounded: boolean;

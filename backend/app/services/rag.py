@@ -25,6 +25,7 @@ from app.schemas.ask import AskMode, AskResponse, Source, Turn
 from app.services.images import ImageService
 from app.services.intent import IntentRouter
 from app.services.llm import LLMClient
+from app.services.places import PlacesService
 from app.services.search import SearchService
 
 logger = get_logger(__name__)
@@ -70,6 +71,7 @@ class RagService:
         images: ImageService,
         llm: LLMClient,
         router: IntentRouter,
+        places: PlacesService,
         response_cache: TTLCache[AskResponse],
     ) -> None:
         self._settings = settings
@@ -77,6 +79,7 @@ class RagService:
         self._images = images
         self._llm = llm
         self._router = router
+        self._places = places
         self._cache = response_cache
 
     async def answer(
@@ -146,15 +149,20 @@ class RagService:
             else self._settings.llm_max_tokens_fast
         )
 
-        answer_text, images = await asyncio.gather(
+        # Answer text, gallery images, and map places are independent; fetch
+        # concurrently. `query` is the router's standalone, place-oriented
+        # query, so the places search returns real spots for the topic.
+        answer_text, images, map_places = await asyncio.gather(
             self._llm.generate(system_prompt, user_prompt, max_tokens),
             self._images.search(query, limit=self._settings.images_default_limit),
+            self._places.search(query, county, limit=10),
         )
 
         response = AskResponse(
             answer=self._sanitise(answer_text),
             sources=self._top_sources(search_result.sources),
             images=images,
+            places=map_places,
             county=county,
             mode=mode,
             grounded=bool(search_result.sources),

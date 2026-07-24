@@ -306,6 +306,71 @@ def signup(body: SignupRequest) -> LoginResponse:
     )
 
 
+@router.get("/me", response_model=LoginUser)
+def me(
+    authorization: Annotated[Optional[str], Header()] = None,
+) -> LoginUser:
+    """Return the current user's profile for the supplied access token.
+
+    A missing/invalid/expired token returns 401 so the client clears its
+    local session and routes back to login; Supabase outages return 500.
+    """
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing or invalid Authorization header",
+        )
+    access_token = authorization.split(" ", 1)[1].strip()
+    if not access_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing access token",
+        )
+
+    # Validate the token with Supabase. Throwaway client so the shared admin
+    # client never stores a user session (see create_auth_client docstring).
+    try:
+        user_response = create_auth_client().auth.get_user(access_token)
+    except (AuthApiError, AuthInvalidCredentialsError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired"
+        ) from exc
+    except AuthRetryableError as exc:
+        raise _auth_unavailable() from exc
+    except Exception as exc:
+        raise _auth_unavailable() from exc
+
+    user = getattr(user_response, "user", None)
+    if user is None or not user.id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired"
+        )
+    user_id = str(user.id)
+
+    # Load stored phone + name from profiles (service-role read).
+    try:
+        profile_result = (
+            get_supabase()
+            .table("profiles")
+            .select("phone, full_name")
+            .eq("id", user_id)
+            .maybe_single()
+            .execute()
+        )
+    except AuthRetryableError as exc:
+        raise _auth_unavailable() from exc
+    except Exception as exc:
+        raise _auth_unavailable() from exc
+
+    profile = profile_result.data if profile_result else None
+    return LoginUser(
+        id=user_id,
+        email=user.email or "",
+        phone=str(profile["phone"]) if profile and profile.get("phone") else "",
+        full_name=profile.get("full_name") if profile else None,
+    )
+
+
 @router.post("/logout", response_model=LogoutResponse)
 def logout(
     body: LogoutRequest,

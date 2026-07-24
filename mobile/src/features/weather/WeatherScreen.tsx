@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -21,6 +21,8 @@ import {
   type WeatherKind,
   useWeather,
 } from "./useWeather";
+
+import { useThemeContext } from "@/theme/ThemeProvider";
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
@@ -65,8 +67,10 @@ function getWeatherIconColor(
 }
 
 export default function WeatherScreen() {
-  const [themeName, setThemeName] =
-    useState<WeatherThemeName>("light");
+  // Follow the app-wide theme (driven by the Profile "Dark mode" toggle)
+  // instead of a separate per-screen toggle.
+  const { scheme } = useThemeContext();
+  const themeName: WeatherThemeName = scheme === "dark" ? "dark" : "light";
 
   const theme = weatherThemes[themeName];
 
@@ -86,12 +90,6 @@ export default function WeatherScreen() {
     selectPlace,
     refresh,
   } = useWeather();
-
-  const toggleTheme = () => {
-    setThemeName((currentTheme) =>
-      currentTheme === "light" ? "dark" : "light",
-    );
-  };
 
   const statusBarStyle =
     themeName === "light"
@@ -207,27 +205,6 @@ export default function WeatherScreen() {
                 {weather.place.name}
               </Text>
             </View>
-
-            <Pressable
-              style={styles.themeButton}
-              onPress={toggleTheme}
-              accessibilityRole="button"
-              accessibilityLabel={
-                themeName === "light"
-                  ? "Switch to dark theme"
-                  : "Switch to light theme"
-              }
-            >
-              <Ionicons
-                name={
-                  themeName === "light"
-                    ? "moon-outline"
-                    : "sunny-outline"
-                }
-                size={19}
-                color={theme.colors.primary}
-              />
-            </Pressable>
           </View>
         </View>
 

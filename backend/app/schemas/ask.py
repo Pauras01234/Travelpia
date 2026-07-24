@@ -13,6 +13,7 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domain.counties import normalise_county
+from app.schemas.places import MapPlace
 
 
 class AskMode(str, Enum):
@@ -107,6 +108,9 @@ class AskResponse(BaseModel):
     answer: str
     sources: list[Source] = Field(default_factory=list)
     images: list[Image] = Field(default_factory=list)
+    # Real places (with coordinates) for the topic, so the client can pin them
+    # on the map. Empty for conversational (non-grounded) replies.
+    places: list[MapPlace] = Field(default_factory=list)
 
     # Non-contract-breaking metadata (additive fields the client may ignore).
     county: str

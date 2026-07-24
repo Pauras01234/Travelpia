@@ -1,8 +1,8 @@
 /**
- * Shared "explore" state that links the Ask and Map tabs: the active county and
- * the current map query. When you ask TravelPia a grounded question, Ask writes
- * the question here so the Map renders pins for it; the Map's own search box and
- * county picker also write here, so the two tabs stay in sync.
+ * Shared "explore" state that links the Ask, Map, and Saved flows: the active
+ * county, the current map query, and any exact places the Map should focus.
+ * Map's own search box and county picker also write here, so the tabs stay in
+ * sync.
  */
 import {
   createContext,
@@ -12,11 +12,8 @@ import {
   type ReactNode,
 } from "react";
 
-import {
-  DEFAULT_COUNTY,
-  normaliseCounty,
-  type County,
-} from "@/constants/counties";
+import type { MapPlace } from "@/api/types";
+import { DEFAULT_COUNTY, type County } from "@/constants/counties";
 
 interface ExploreContextValue {
   county: County;
@@ -24,8 +21,9 @@ interface ExploreContextValue {
   mapQuery: string;
   setCounty: (county: County) => void;
   setMapQuery: (query: string) => void;
-  /** Called by Ask on a grounded answer to point the Map at that question. */
-  exploreFromAsk: (county: string, question: string) => void;
+  /** Places to pin/focus on the Map (from Saved places or an Ask answer). */
+  focusPlaces: MapPlace[];
+  setFocusPlaces: (places: MapPlace[]) => void;
 }
 
 const ExploreContext = createContext<ExploreContextValue | undefined>(undefined);
@@ -33,20 +31,18 @@ const ExploreContext = createContext<ExploreContextValue | undefined>(undefined)
 export function ExploreProvider({ children }: { children: ReactNode }) {
   const [county, setCounty] = useState<County>(DEFAULT_COUNTY);
   const [mapQuery, setMapQuery] = useState("");
+  const [focusPlaces, setFocusPlaces] = useState<MapPlace[]>([]);
 
   const value = useMemo<ExploreContextValue>(
     () => ({
       county,
       mapQuery,
+      focusPlaces,
       setCounty,
       setMapQuery,
-      exploreFromAsk: (nextCounty, question) => {
-        const normalised = normaliseCounty(nextCounty);
-        if (normalised) setCounty(normalised);
-        setMapQuery(question);
-      },
+      setFocusPlaces,
     }),
-    [county, mapQuery],
+    [county, mapQuery, focusPlaces],
   );
 
   return (
