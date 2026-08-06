@@ -24,6 +24,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ExploreProvider } from "@/features/explore/ExploreContext";
 import { SavedPlacesProvider } from "@/features/saved/SavedPlacesContext";
+import { AvatarProvider } from "@/features/settings/AvatarContext";
 import { ThemeProvider, useThemeContext } from "@/theme/ThemeProvider";
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -55,9 +56,11 @@ export default function RootLayout() {
       <ThemeProvider>
         <ExploreProvider>
           <SavedPlacesProvider>
-            <AuthProvider>
-              <ThemedNavigation />
-            </AuthProvider>
+            <AvatarProvider>
+              <AuthProvider>
+                <ThemedNavigation />
+              </AuthProvider>
+            </AvatarProvider>
           </SavedPlacesProvider>
         </ExploreProvider>
       </ThemeProvider>

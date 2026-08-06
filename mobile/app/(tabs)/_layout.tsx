@@ -62,9 +62,12 @@ export default function TabsLayout() {
         name="profile"
         options={{ title: "Profile", tabBarIcon: icon("person-outline") }}
       />
-      {/* Detail screen inside the tab navigator (keeps the tab bar visible),
+      {/* Detail screens inside the tab navigator (keep the tab bar visible),
           hidden from the tab bar itself. */}
       <Tabs.Screen name="saved" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
+      <Tabs.Screen name="terms" options={{ href: null }} />
+      <Tabs.Screen name="support" options={{ href: null }} />
     </Tabs>
   );
 }

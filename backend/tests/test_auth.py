@@ -22,3 +22,10 @@ def test_logout_requires_bearer_token(make_client):
     with client:
         resp = client.post("/auth/logout", json={"refresh_token": "x"})
     assert resp.status_code == 401
+
+
+def test_update_me_requires_bearer_token(make_client):
+    client, _ = make_client()
+    with client:
+        resp = client.patch("/auth/me", json={"full_name": "New Name"})
+    assert resp.status_code == 401

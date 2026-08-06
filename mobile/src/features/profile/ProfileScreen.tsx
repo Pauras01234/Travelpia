@@ -5,13 +5,12 @@
  * name + email), trip stats, a functional Dark mode toggle (drives the app
  * ThemeProvider), account rows, and a working Log out.
  *
- * Not-yet-built items (Notifications, Help & feedback) are shown as "Soon"
- * rather than as dead taps. Editing the profile and the saved-places list are
- * follow-ups; "Saved places" routes to its (currently empty) screen.
+ * The gear opens Settings (edit name/photo); "Saved places" and "Help &
+ * feedback" route to their screens. Notifications is a "Soon" placeholder.
  */
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
   ActivityIndicator,
   Pressable,
@@ -23,20 +22,15 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppText } from "@/components/AppText";
+import { Avatar } from "@/components/Avatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSavedPlaces } from "@/features/saved/SavedPlacesContext";
+import { useAvatar } from "@/features/settings/AvatarContext";
 import { useTheme, useThemeContext } from "@/theme/ThemeProvider";
 
 import { useProfile } from "./useProfile";
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
-
-function initials(name: string | null, email: string): string {
-  const source = (name?.trim() || email.split("@")[0] || "").trim();
-  const parts = source.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return source.slice(0, 2).toUpperCase() || "?";
-}
 
 export function ProfileScreen() {
   const theme = useTheme();
@@ -45,8 +39,17 @@ export function ProfileScreen() {
   const router = useRouter();
   const { profile, loading, error, reload } = useProfile();
   const { places: savedPlaces } = useSavedPlaces();
+  const { avatarUri } = useAvatar();
 
   const [loggingOut, setLoggingOut] = useState(false);
+
+  // Refresh (silently) whenever the tab regains focus — e.g. after editing the
+  // name in Settings.
+  useFocusEffect(
+    useCallback(() => {
+      reload();
+    }, [reload]),
+  );
 
   const onLogout = async () => {
     if (loggingOut) return;
@@ -65,6 +68,14 @@ export function ProfileScreen() {
     >
       <View style={styles.header}>
         <AppText variant="title">Profile</AppText>
+        <Pressable
+          onPress={() => router.push("/settings")}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Settings"
+        >
+          <Ionicons name="settings-outline" size={22} color={theme.colors.text} />
+        </Pressable>
       </View>
 
       {loading ? (
@@ -89,11 +100,12 @@ export function ProfileScreen() {
         >
           {/* Identity */}
           <View style={styles.identity}>
-            <View style={[styles.avatar, { backgroundColor: theme.colors.primary }]}>
-              <AppText variant="heading" color={theme.colors.onPrimary}>
-                {initials(profile?.full_name ?? null, profile?.email ?? "")}
-              </AppText>
-            </View>
+            <Avatar
+              uri={avatarUri}
+              name={profile?.full_name}
+              email={profile?.email}
+              size={56}
+            />
             <View style={styles.identityText}>
               <AppText variant="heading" numberOfLines={1}>
                 {profile?.full_name?.trim() || "Traveller"}
@@ -153,7 +165,11 @@ export function ProfileScreen() {
             <Divider />
             <AccountRow icon="notifications-outline" label="Notifications" soon />
             <Divider />
-            <AccountRow icon="help-circle-outline" label="Help & feedback" soon />
+            <AccountRow
+              icon="help-circle-outline"
+              label="Help & feedback"
+              onPress={() => router.push("/support")}
+            />
           </View>
 
           {/* Log out */}
@@ -261,7 +277,13 @@ function Divider() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingVertical: 12 },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+  },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: 12, padding: 24 },
   retry: { paddingVertical: 8, paddingHorizontal: 16 },
   content: { padding: 20, paddingBottom: 32, gap: 16 },
