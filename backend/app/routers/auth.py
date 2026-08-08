@@ -306,14 +306,16 @@ def signup(body: SignupRequest) -> LoginResponse:
     )
 
 
-@router.get("/me", response_model=LoginUser)
-def me(
-    authorization: Annotated[Optional[str], Header()] = None,
-) -> LoginUser:
-    """Return the current user's profile for the supplied access token.
+class UpdateProfileRequest(BaseModel):
+    """Editable profile fields. Only provided fields are changed."""
 
-    A missing/invalid/expired token returns 401 so the client clears its
-    local session and routes back to login; Supabase outages return 500.
+    full_name: Optional[str] = Field(default=None, max_length=120)
+
+
+def _authenticated_user(authorization: Optional[str]) -> tuple[str, str]:
+    """Validate a Bearer access token → ``(user_id, email)``, else 401/500.
+
+    Throwaway client so the shared admin client never stores a user session.
     """
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(
@@ -326,9 +328,6 @@ def me(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing access token",
         )
-
-    # Validate the token with Supabase. Throwaway client so the shared admin
-    # client never stores a user session (see create_auth_client docstring).
     try:
         user_response = create_auth_client().auth.get_user(access_token)
     except (AuthApiError, AuthInvalidCredentialsError) as exc:
@@ -345,9 +344,11 @@ def me(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired"
         )
-    user_id = str(user.id)
+    return str(user.id), (user.email or "")
 
-    # Load stored phone + name from profiles (service-role read).
+
+def _load_login_user(user_id: str, email: str) -> LoginUser:
+    """Read stored phone + name from profiles for the given user."""
     try:
         profile_result = (
             get_supabase()
@@ -365,10 +366,49 @@ def me(
     profile = profile_result.data if profile_result else None
     return LoginUser(
         id=user_id,
-        email=user.email or "",
+        email=email,
         phone=str(profile["phone"]) if profile and profile.get("phone") else "",
         full_name=profile.get("full_name") if profile else None,
     )
+
+
+@router.get("/me", response_model=LoginUser)
+def me(
+    authorization: Annotated[Optional[str], Header()] = None,
+) -> LoginUser:
+    """Return the current user's profile for the supplied access token.
+
+    A missing/invalid/expired token returns 401 so the client clears its
+    local session and routes back to login; Supabase outages return 500.
+    """
+    user_id, email = _authenticated_user(authorization)
+    return _load_login_user(user_id, email)
+
+
+@router.patch("/me", response_model=LoginUser)
+def update_me(
+    body: UpdateProfileRequest,
+    authorization: Annotated[Optional[str], Header()] = None,
+) -> LoginUser:
+    """Update the current user's editable profile fields (e.g. display name)."""
+    user_id, email = _authenticated_user(authorization)
+
+    updates: dict[str, object] = {}
+    if body.full_name is not None:
+        # Empty string clears the name; otherwise store the trimmed value.
+        updates["full_name"] = body.full_name.strip() or None
+
+    if updates:
+        try:
+            get_supabase().table("profiles").update(updates).eq(
+                "id", user_id
+            ).execute()
+        except AuthRetryableError as exc:
+            raise _auth_unavailable() from exc
+        except Exception as exc:
+            raise _auth_unavailable() from exc
+
+    return _load_login_user(user_id, email)
 
 
 @router.post("/logout", response_model=LogoutResponse)

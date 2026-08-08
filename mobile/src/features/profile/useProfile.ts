@@ -32,7 +32,8 @@ export function useProfile(): UseProfileResult {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
+    // Note: we don't force `loading` true here, so re-fetches (retry / focus
+    // refresh) update the data silently — only the first load shows a spinner.
     setError(null);
     try {
       const tokens = await getTokens();

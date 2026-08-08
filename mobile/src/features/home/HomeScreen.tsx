@@ -20,10 +20,12 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppText } from "@/components/AppText";
+import { Avatar } from "@/components/Avatar";
 import { COUNTIES, type County } from "@/constants/counties";
 import { CountyPickerModal } from "@/features/ask/components/CountyPickerModal";
 import { useExplore } from "@/features/explore/ExploreContext";
 import { useProfile } from "@/features/profile/useProfile";
+import { useAvatar } from "@/features/settings/AvatarContext";
 import { useTheme } from "@/theme/ThemeProvider";
 
 import { countyMeta, FEATURED_COUNTIES } from "./countyData";
@@ -35,18 +37,12 @@ import { useCountyWeather } from "./useCountyWeather";
 // light — not theme `onPrimary` (which is dark in dark mode).
 const HERO_TEXT = "#FFFFFF";
 
-function initials(name: string | null | undefined, email: string): string {
-  const source = (name?.trim() || email.split("@")[0] || "").trim();
-  const parts = source.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return source.slice(0, 2).toUpperCase() || "?";
-}
-
 export function HomeScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { county, setCounty } = useExplore();
   const { profile, loading } = useProfile();
+  const { avatarUri } = useAvatar();
   const weather = useCountyWeather(county);
   const heroImage = useCountyImage(county);
 
@@ -93,11 +89,15 @@ export function HomeScreen() {
             onPress={() => router.navigate("/profile")}
             accessibilityRole="button"
             accessibilityLabel="Open profile"
-            style={[styles.avatar, { backgroundColor: theme.colors.chipBg }]}
           >
-            <AppText variant="bodySemibold" color={theme.colors.primary}>
-              {initials(profile?.full_name, profile?.email ?? "")}
-            </AppText>
+            <Avatar
+              uri={avatarUri}
+              name={profile?.full_name}
+              email={profile?.email}
+              size={44}
+              backgroundColor={theme.colors.chipBg}
+              textColor={theme.colors.primary}
+            />
           </Pressable>
         </View>
 
