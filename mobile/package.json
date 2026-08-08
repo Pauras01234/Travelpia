@@ -9,7 +9,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "postinstall": "patch-package"
   },
   "dependencies": {
     "@expo-google-fonts/bricolage-grotesque": "^0.4.1",
@@ -44,6 +45,7 @@
     "@babel/core": "^7.24.0",
     "@types/leaflet": "^1.9.21",
     "@types/react": "~18.2.79",
+    "patch-package": "^8.0.1",
     "typescript": "~5.3.3"
   }
 }
