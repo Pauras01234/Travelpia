@@ -9,12 +9,22 @@ import {
 } from "react";
 
 import { logoutRequest } from "@/lib/api";
-import { clearTokens, getTokens, setTokens } from "@/lib/session";
+import { setAuthBridge } from "@/lib/authBridge";
+import {
+  clearTokens,
+  getTokens,
+  getValidAccessToken,
+  setTokens,
+} from "@/lib/session";
 
 type AuthContextValue = {
   isReady: boolean;
   isSignedIn: boolean;
-  completeLogin: (accessToken: string, refreshToken: string) => Promise<void>;
+  completeLogin: (
+    accessToken: string,
+    refreshToken: string,
+    expiresInSeconds?: number,
+  ) => Promise<void>;
   logout: () => Promise<void>;
   /** Clear local session (e.g. expired access token on a later request). */
   handleUnauthorized: () => Promise<void>;
@@ -48,8 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const completeLogin = useCallback(
-    async (accessToken: string, refreshToken: string) => {
-      await setTokens(accessToken, refreshToken);
+    async (
+      accessToken: string,
+      refreshToken: string,
+      expiresInSeconds?: number,
+    ) => {
+      await setTokens(accessToken, refreshToken, expiresInSeconds);
       setIsSignedIn(true);
     },
     [],
@@ -59,6 +73,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await clearTokens();
     setIsSignedIn(false);
   }, []);
+
+  // Let the HTTP client authenticate requests and report rejected sessions
+  // without any feature code having to pass tokens around.
+  useEffect(() => {
+    setAuthBridge({
+      getAccessToken: getValidAccessToken,
+      onUnauthorized: handleUnauthorized,
+    });
+    return () => setAuthBridge(null);
+  }, [handleUnauthorized]);
 
   const logout = useCallback(async () => {
     const tokens = await getTokens();

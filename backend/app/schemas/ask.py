@@ -102,6 +102,22 @@ class AskRequest(BaseModel):
         return v
 
 
+class QuotaState(BaseModel):
+    """The caller's remaining daily allowance, echoed on every answer.
+
+    Lets the client keep an accurate counter without a second endpoint. Null
+    when metering is disabled, so "no quota" and "zero remaining" stay
+    distinguishable.
+    """
+
+    plan: str
+    limit: int
+    remaining: int
+    resets_at: str = Field(
+        ..., description="ISO-8601 UTC timestamp of the next daily reset."
+    )
+
+
 class AskResponse(BaseModel):
     """Outbound payload for ``POST /ask`` — the frozen contract shape."""
 
@@ -122,6 +138,10 @@ class AskResponse(BaseModel):
     cached: bool = Field(
         default=False,
         description="True when served from the response cache.",
+    )
+    quota: QuotaState | None = Field(
+        default=None,
+        description="Remaining daily allowance; null when metering is off.",
     )
 
 

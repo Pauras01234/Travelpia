@@ -11,11 +11,17 @@ from supabase_auth.errors import (
     AuthRetryableError,
 )
 
+from app.domain.plans import Plan
 from app.supabase_client import create_auth_client, get_supabase
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
+# Columns the client is allowed to see. `plan` drives entitlement in the app;
+# it is written only by the backend (see migration 002).
+_PROFILE_COLUMNS = "phone, full_name, plan"
+
 INVALID_CREDENTIALS_DETAIL = "Invalid email, phone, or password"
+SESSION_EXPIRED_DETAIL = "Session expired"
 AUTH_UNAVAILABLE_DETAIL = "Authentication service unavailable"
 SIGNUP_UNAVAILABLE_DETAIL = "Unable to create account"
 EMAIL_TAKEN_DETAIL = "An account with this email already exists"
@@ -61,6 +67,9 @@ class LoginUser(BaseModel):
     email: str
     phone: str
     full_name: Optional[str] = None
+    # Entitlement tier. Always present so the client never has to guess; an
+    # unknown or missing value resolves to "free" (see Plan.coerce).
+    plan: str = Plan.free.value
 
 
 class LoginResponse(BaseModel):
@@ -68,6 +77,10 @@ class LoginResponse(BaseModel):
     refresh_token: str
     expires_in: int
     user: LoginUser
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=1)
 
 
 class LogoutRequest(BaseModel):
@@ -101,6 +114,14 @@ def _invalid_credentials() -> HTTPException:
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail=INVALID_CREDENTIALS_DETAIL,
+    )
+
+
+def _invalid_session() -> HTTPException:
+    """The session cannot be recovered — the client must sign in again."""
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=SESSION_EXPIRED_DETAIL,
     )
 
 
@@ -167,7 +188,7 @@ def login(body: LoginRequest) -> LoginResponse:
     try:
         profile_result = (
             supabase.table("profiles")
-            .select("phone, full_name")
+            .select(_PROFILE_COLUMNS)
             .eq("id", user_id)
             .maybe_single()
             .execute()
@@ -201,6 +222,7 @@ def login(body: LoginRequest) -> LoginResponse:
             email=email,
             phone=str(profile["phone"]),
             full_name=profile.get("full_name"),
+            plan=Plan.coerce(profile.get("plan")).value,
         ),
     )
 
@@ -353,7 +375,7 @@ def _load_login_user(user_id: str, email: str) -> LoginUser:
         profile_result = (
             get_supabase()
             .table("profiles")
-            .select("phone, full_name")
+            .select(_PROFILE_COLUMNS)
             .eq("id", user_id)
             .maybe_single()
             .execute()
@@ -369,6 +391,7 @@ def _load_login_user(user_id: str, email: str) -> LoginUser:
         email=email,
         phone=str(profile["phone"]) if profile and profile.get("phone") else "",
         full_name=profile.get("full_name") if profile else None,
+        plan=Plan.coerce(profile.get("plan") if profile else None).value,
     )
 
 
@@ -409,6 +432,43 @@ def update_me(
             raise _auth_unavailable() from exc
 
     return _load_login_user(user_id, email)
+
+
+@router.post("/refresh", response_model=LoginResponse)
+def refresh(body: RefreshRequest) -> LoginResponse:
+    """Exchange a refresh token for a fresh access token.
+
+    Without this the app is capped at the access token's lifetime and has to
+    sign the user out the moment it expires. Returns the same shape as
+    ``/auth/login`` so the client reuses one parser and one storage path.
+
+    Uses a throwaway client: the shared service-role client must never hold a
+    user session (see ``create_auth_client``).
+    """
+    try:
+        auth_response = create_auth_client().auth.refresh_session(
+            body.refresh_token
+        )
+    except (AuthApiError, AuthInvalidCredentialsError) as exc:
+        # Expired, revoked, or already-rotated refresh token. Unrecoverable —
+        # the client clears its session rather than retrying.
+        raise _invalid_session() from exc
+    except AuthRetryableError as exc:
+        raise _auth_unavailable() from exc
+    except Exception as exc:
+        raise _auth_unavailable() from exc
+
+    session = auth_response.session
+    if session is None or auth_response.user is None:
+        raise _invalid_session()
+
+    user_id = str(auth_response.user.id)
+    return LoginResponse(
+        access_token=session.access_token,
+        refresh_token=session.refresh_token,
+        expires_in=int(session.expires_in),
+        user=_load_login_user(user_id, auth_response.user.email or ""),
+    )
 
 
 @router.post("/logout", response_model=LogoutResponse)

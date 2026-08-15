@@ -24,6 +24,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { initSentry, Sentry } from "@/lib/sentry";
 import { ExploreProvider } from "@/features/explore/ExploreContext";
+import { PremiumProvider } from "@/features/premium/PremiumContext";
+import { ProfileProvider } from "@/features/profile/ProfileContext";
 import { SavedPlacesProvider } from "@/features/saved/SavedPlacesContext";
 import { AvatarProvider } from "@/features/settings/AvatarContext";
 import { ThemeProvider, useThemeContext } from "@/theme/ThemeProvider";
@@ -64,8 +66,14 @@ function RootLayout() {
         <ExploreProvider>
           <SavedPlacesProvider>
             <AvatarProvider>
+              {/* Auth first (it registers the HTTP client's token bridge),
+                  then the profile it fetches, then the plan derived from it. */}
               <AuthProvider>
-                <ThemedNavigation />
+                <ProfileProvider>
+                  <PremiumProvider>
+                    <ThemedNavigation />
+                  </PremiumProvider>
+                </ProfileProvider>
               </AuthProvider>
             </AvatarProvider>
           </SavedPlacesProvider>

@@ -28,7 +28,7 @@ import { useSavedPlaces } from "@/features/saved/SavedPlacesContext";
 import { useAvatar } from "@/features/settings/AvatarContext";
 import { useTheme, useThemeContext } from "@/theme/ThemeProvider";
 
-import { useProfile } from "./useProfile";
+import { useProfile } from "./ProfileContext";
 
 type IoniconName = keyof typeof Ionicons.glyphMap;
 
