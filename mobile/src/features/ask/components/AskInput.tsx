@@ -10,6 +10,8 @@ interface AskInputProps {
   onSubmit: () => void;
   county: string;
   disabled?: boolean;
+  /** Overrides the prompt — used to explain a disabled input. */
+  placeholder?: string;
 }
 
 export function AskInput({
@@ -18,6 +20,7 @@ export function AskInput({
   onSubmit,
   county,
   disabled = false,
+  placeholder,
 }: AskInputProps) {
   const theme = useTheme();
   const canSend = value.trim().length >= 1 && !disabled;
@@ -37,7 +40,7 @@ export function AskInput({
         style={[styles.input, { color: theme.colors.text }]}
         value={value}
         onChangeText={onChangeText}
-        placeholder={`Ask about ${county}...`}
+        placeholder={placeholder ?? `Ask about ${county}...`}
         placeholderTextColor={theme.colors.textMuted}
         returnKeyType="send"
         onSubmitEditing={() => canSend && onSubmit()}

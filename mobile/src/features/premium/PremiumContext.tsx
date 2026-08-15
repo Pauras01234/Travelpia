@@ -22,6 +22,7 @@ import { useProfile } from "@/features/profile/ProfileContext";
 import type { Plan } from "@/lib/api";
 
 import {
+  formatResetTime,
   PREMIUM_FEATURES,
   planIncludes,
   type PremiumFeatureKey,
@@ -48,16 +49,6 @@ interface PremiumContextValue {
 }
 
 const PremiumContext = createContext<PremiumContextValue | undefined>(undefined);
-
-/** Local wall-clock time of the next reset, e.g. "at 01:00". */
-function formatReset(isoTimestamp: string | null): string | null {
-  if (!isoTimestamp) return null;
-  const when = new Date(isoTimestamp);
-  if (Number.isNaN(when.getTime())) return null;
-  const hh = String(when.getHours()).padStart(2, "0");
-  const mm = String(when.getMinutes()).padStart(2, "0");
-  return `at ${hh}:${mm}`;
-}
 
 /** Reads a quota snapshot out of a 429's `meta` envelope. */
 function quotaFromMeta(meta: Record<string, unknown> | null | undefined) {
@@ -144,7 +135,7 @@ export function PremiumProvider({ children }: { children: ReactNode }) {
         feature={openFeature}
         resetsAt={
           openFeature === "unlimitedAsks"
-            ? formatReset(quota?.resets_at ?? null)
+            ? formatResetTime(quota?.resets_at ?? null)
             : null
         }
         onClose={() => setOpenFeature(null)}

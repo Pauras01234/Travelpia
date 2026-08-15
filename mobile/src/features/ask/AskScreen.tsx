@@ -42,7 +42,7 @@ import { useAsk } from "./useAsk";
 export function AskScreen() {
   const theme = useTheme();
   const scrollRef = useRef<ScrollView>(null);
-  const { hasFeature, requestAccess } = usePremium();
+  const { hasFeature, requestAccess, outOfQuestions } = usePremium();
 
   const { county, setCounty } = useExplore();
   const [mode, setMode] = useState<AskMode>("fast");
@@ -161,7 +161,13 @@ export function AskScreen() {
             onChangeText={setQuestion}
             onSubmit={() => submit(question)}
             county={county}
-            disabled={ask.phase === "thinking"}
+            // Once the allowance is gone every message is refused, small talk
+            // included — so the box is disabled rather than inviting a send
+            // that can only fail. QuotaNotice carries the upgrade action.
+            disabled={ask.phase === "thinking" || outOfQuestions}
+            placeholder={
+              outOfQuestions ? "You've used today's questions" : undefined
+            }
           />
         </View>
       </KeyboardAvoidingView>

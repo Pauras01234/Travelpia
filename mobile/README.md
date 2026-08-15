@@ -136,5 +136,6 @@ the upgrade sheet is hosted by `PremiumProvider`, so screens don't own a modal.
 - **Running out is not an error.** `useAsk` routes `quota_exceeded` and
   `premium_required` to `handleApiError`, which opens the sheet and hands the
   user's question back to the input instead of rendering the error card.
-- The input **stays enabled** at zero: conversational replies are free, and
-  blocking it would stop someone saying "thanks" because they ran out.
+- At zero the input is **disabled**, because the server refuses every message
+  once the allowance is gone — small talk included. `QuotaNotice` then becomes
+  the only affordance: it says when questions return and offers the upgrade.

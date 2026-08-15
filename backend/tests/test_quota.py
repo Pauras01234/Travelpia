@@ -134,6 +134,30 @@ def test_free_user_at_limit_is_rejected_before_any_upstream_call(make_client):
     assert fakes["search"].calls == 0
 
 
+def test_everything_is_refused_at_the_limit_including_small_talk(make_client):
+    """Deliberate: an exhausted account costs zero upstream calls.
+
+    Enforcement sits in a dependency, before the intent router runs, so chat
+    and a real question can't be told apart without spending an LLM call. We
+    refuse both. The app disables its input to match — if that ever changes,
+    this test and the two READMEs change with it.
+    """
+    client, fakes = make_client(
+        user=SIGNED_IN,
+        usage=FakeUsageStore({SIGNED_IN.id: 5}),
+        route=RouteDecision(route="chat", reply="You're welcome!", search_query=""),
+        settings_overrides={"free_daily_asks": 5},
+    )
+    with client:
+        resp = ask(client, CHAT)
+
+    assert resp.status_code == 429
+    assert resp.json()["error"] == "quota_exceeded"
+    # Not even the cheap intent-router call is made.
+    assert fakes["router"].calls == 0
+    assert fakes["llm"].calls == 0
+
+
 def test_premium_user_passes_the_free_limit(make_client):
     usage = FakeUsageStore({SIGNED_IN.id: 20})
     client, _ = make_client(

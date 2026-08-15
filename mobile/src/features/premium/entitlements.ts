@@ -51,3 +51,16 @@ export const PREMIUM_FEATURES: Record<PremiumFeatureKey, PremiumFeature> = {
 export function planIncludes(plan: Plan, key: PremiumFeatureKey): boolean {
   return plan === "premium" || PREMIUM_FEATURES[key].includedInFree === true;
 }
+
+/**
+ * The reset moment in the reader's own wall-clock time, e.g. "at 01:00".
+ * The server works in UTC; showing that raw would be confusing.
+ */
+export function formatResetTime(isoTimestamp: string | null): string | null {
+  if (!isoTimestamp) return null;
+  const when = new Date(isoTimestamp);
+  if (Number.isNaN(when.getTime())) return null;
+  const hh = String(when.getHours()).padStart(2, "0");
+  const mm = String(when.getMinutes()).padStart(2, "0");
+  return `at ${hh}:${mm}`;
+}

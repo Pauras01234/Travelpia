@@ -77,9 +77,16 @@ error. The router fails safe to "search" if its output can't be parsed.
 
 **Only grounded answers are charged.** `enforce_ask_quota` runs before any
 upstream call — a blocked request costs nothing — and the increment happens
-after the answer, gated on `response.grounded`. Small talk, empty searches and
-upstream failures are therefore free. Every answer echoes a `quota` object so
-the client can display the remaining allowance without a second endpoint.
+after the answer, gated on `response.grounded`. So while a user still has
+questions left, small talk, empty searches and upstream failures cost them
+nothing. Every answer echoes a `quota` object so the client can display the
+remaining allowance without a second endpoint.
+
+**Once the allowance is gone, every message is refused — small talk included.**
+Enforcement happens in a dependency, before `RagService` routes the message, so
+at that point chat and a real question are indistinguishable without spending an
+intent-router call. Refusing outright keeps an exhausted account at exactly zero
+upstream cost; the app disables its input to match.
 
 Counting is done by an atomic Postgres statement (`increment_ask_usage`), not
 read-then-write, so concurrent asks can't both read N and write N+1.

@@ -2,9 +2,9 @@
  * The free plan's remaining daily questions, shown above the Ask input.
  *
  * Visible only when the server is actually metering this account, so premium
- * users are never reminded of a limit they don't have. The input stays enabled
- * at zero on purpose: conversational replies are free, and blocking the box
- * would stop someone saying "thanks" because they ran out of questions.
+ * users are never reminded of a limit they don't have. At zero the server
+ * refuses every message — small talk included — so this row becomes the only
+ * affordance: it says when the allowance returns and offers the upgrade.
  */
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -12,6 +12,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { AppText } from "@/components/AppText";
 import { useTheme } from "@/theme/ThemeProvider";
 
+import { formatResetTime } from "./entitlements";
 import { usePremium } from "./PremiumContext";
 
 export function QuotaNotice() {
@@ -23,6 +24,7 @@ export function QuotaNotice() {
 
   const low = quota.remaining <= 1;
   const tint = low ? theme.colors.accent : theme.colors.textMuted;
+  const resetsAt = formatResetTime(quota.resets_at);
 
   return (
     <View
@@ -43,7 +45,9 @@ export function QuotaNotice() {
       />
       <AppText variant="caption" color={tint} style={styles.label}>
         {outOfQuestions
-          ? "You've used today's questions"
+          ? resetsAt
+            ? `Out of questions — more ${resetsAt}`
+            : "You've used today's questions"
           : `${quota.remaining} of ${quota.limit} questions left today`}
       </AppText>
       {outOfQuestions && (
