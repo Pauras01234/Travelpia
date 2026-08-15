@@ -27,6 +27,9 @@ import { SavedPlacesProvider } from "@/features/saved/SavedPlacesContext";
 import { AvatarProvider } from "@/features/settings/AvatarContext";
 import { ThemeProvider, useThemeContext } from "@/theme/ThemeProvider";
 
+// Expo Router renders this instead of a white screen when a render throws.
+export { ErrorBoundary } from "@/components/ErrorScreen";
+
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
