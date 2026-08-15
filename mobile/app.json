@@ -47,7 +47,8 @@
             "targetSdkVersion": 36
           }
         }
-      ]
+      ],
+      "@sentry/react-native"
     ],
     "extra": {
       "router": {

@@ -9,14 +9,22 @@
  * `useTheme()`, because the thing that just failed might be a provider. An
  * error screen must not be able to throw.
  */
+import { useEffect } from "react";
 import type { ErrorBoundaryProps } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View, useColorScheme } from "react-native";
 
+import { reportError } from "@/lib/sentry";
 import { palettes } from "@/theme/tokens";
 
 export function ErrorBoundary({ error, retry }: ErrorBoundaryProps) {
   const scheme = useColorScheme() === "dark" ? "dark" : "light";
   const c = palettes[scheme];
+
+  // Getting here means a render threw. Report it, so a user hitting this is
+  // something we learn about rather than something they have to describe.
+  useEffect(() => {
+    reportError(error);
+  }, [error]);
 
   return (
     <View style={[styles.root, { backgroundColor: c.surface }]}>

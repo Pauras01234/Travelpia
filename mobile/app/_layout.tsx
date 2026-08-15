@@ -22,6 +22,7 @@ import { ActivityIndicator, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { initSentry, Sentry } from "@/lib/sentry";
 import { ExploreProvider } from "@/features/explore/ExploreContext";
 import { SavedPlacesProvider } from "@/features/saved/SavedPlacesContext";
 import { AvatarProvider } from "@/features/settings/AvatarContext";
@@ -30,9 +31,12 @@ import { ThemeProvider, useThemeContext } from "@/theme/ThemeProvider";
 // Expo Router renders this instead of a white screen when a render throws.
 export { ErrorBoundary } from "@/components/ErrorScreen";
 
+// Before anything else, so errors during startup are captured too.
+initSentry();
+
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-export default function RootLayout() {
+function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
     BricolageGrotesque_700Bold,
     BricolageGrotesque_800ExtraBold,
@@ -70,6 +74,10 @@ export default function RootLayout() {
     </SafeAreaProvider>
   );
 }
+
+// Sentry.wrap attaches navigation and render context to every report, so a
+// crash arrives with the screen it happened on rather than a bare stack.
+export default Sentry.wrap(RootLayout);
 
 function ThemedNavigation() {
   const { theme, scheme } = useThemeContext();

@@ -14,7 +14,9 @@
       "android": { "buildType": "apk" },
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://travelpia-production.up.railway.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://travelpia-production.up.railway.app",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://751d23bcf8f667dd62b2209685bd14ce@o4511913896443904.ingest.de.sentry.io/4511913904635984",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "production": {
@@ -22,7 +24,9 @@
       "android": { "buildType": "app-bundle" },
       "channel": "production",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://travelpia-production.up.railway.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://travelpia-production.up.railway.app",
+        "EXPO_PUBLIC_SENTRY_DSN": "https://751d23bcf8f667dd62b2209685bd14ce@o4511913896443904.ingest.de.sentry.io/4511913904635984",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },
