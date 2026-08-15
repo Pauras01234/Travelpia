@@ -48,7 +48,14 @@
           }
         }
       ],
-      "@sentry/react-native"
+      [
+        "@sentry/react-native",
+        {
+          "organization": "travelpia",
+          "project": "react-native",
+          "url": "https://de.sentry.io/"
+        }
+      ]
     ],
     "extra": {
       "router": {
