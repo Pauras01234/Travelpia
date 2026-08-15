@@ -2,7 +2,7 @@
   "expo": {
     "name": "TravelPia",
     "slug": "travelpia",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "scheme": "travelpia",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
