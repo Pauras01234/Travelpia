@@ -59,6 +59,26 @@ cp .env.example .env   # set EXPO_PUBLIC_API_BASE_URL to your backend
 npm start              # then press i (iOS), a (Android), or w (web)
 ```
 
+### ⚠️ Publishing an OTA update
+
+`eas build` reads `EXPO_PUBLIC_*` from the `env` block in `eas.json`, so builds
+always get the right backend. **`eas update` does not** — run locally it inlines
+whatever is in your `.env`, which is usually a LAN address. Publishing that
+would point every installed app at an address only your machine can reach.
+
+Always set the values explicitly, and verify before publishing:
+
+```powershell
+$env:EXPO_PUBLIC_API_BASE_URL='https://travelpia-production.up.railway.app'
+$env:EXPO_PUBLIC_SENTRY_DSN='<dsn>'
+
+# Pre-flight: confirm what got baked in
+npx expo export --platform android
+Select-String -Path dist\_expo\static\js\android\*.js -Pattern '192\.168|railway\.app' | Select-Object -First 3
+
+npx eas-cli update --branch production --message "..."
+```
+
 **Point the app at the backend.** `EXPO_PUBLIC_API_BASE_URL`:
 - iOS simulator / web → `http://localhost:8000`
 - Android emulator → `http://10.0.2.2:8000`
