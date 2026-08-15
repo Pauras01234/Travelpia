@@ -64,7 +64,11 @@ export default function SignupScreen() {
         return;
       }
 
-      await completeLogin(result.data.access_token, result.data.refresh_token);
+      await completeLogin(
+        result.data.access_token,
+        result.data.refresh_token,
+        result.data.expires_in,
+      );
       router.replace("/(tabs)");
     } finally {
       setSubmitting(false);

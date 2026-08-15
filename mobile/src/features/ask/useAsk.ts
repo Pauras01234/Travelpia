@@ -10,7 +10,8 @@ import { useCallback, useRef, useState } from "react";
 
 import { askTravelPia } from "@/api/ask";
 import { ApiError } from "@/api/client";
-import type { AskMode, AskResponse, Turn } from "@/api/types";
+import { ApiErrorCode, type AskMode, type AskResponse, type Turn } from "@/api/types";
+import { usePremium } from "@/features/premium/PremiumContext";
 
 /** How many prior turns to send as context (bounded for cost/latency). */
 const HISTORY_LIMIT = 8;
@@ -46,6 +47,20 @@ export interface AskController {
 
 function toErrorInfo(err: unknown): AskErrorInfo {
   if (err instanceof ApiError) {
+    // The server answered deliberately — don't claim we couldn't reach it.
+    if (err.code === ApiErrorCode.rateLimited) {
+      const seconds = err.retryAfterSeconds;
+      return {
+        title: "Just a moment",
+        message: seconds
+          ? `You're asking faster than I can keep up. Try again in ${seconds}s.`
+          : "You're asking faster than I can keep up. Try again shortly.",
+        retryable: true,
+      };
+    }
+    if (err.code === ApiErrorCode.noResults) {
+      return { title: "Nothing found", message: err.message, retryable: false };
+    }
     return {
       title: "Couldn't reach TravelPia",
       message: err.message,
@@ -59,7 +74,16 @@ function toErrorInfo(err: unknown): AskErrorInfo {
   };
 }
 
-export function useAsk(): AskController {
+export interface UseAskOptions {
+  /**
+   * Called with the user's text when a request was rejected without being
+   * answered, so the screen can put it back in the input rather than lose it.
+   */
+  onQuestionReturned?: (text: string) => void;
+}
+
+export function useAsk({ onQuestionReturned }: UseAskOptions = {}): AskController {
+  const { reportQuota, handleApiError } = usePremium();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [phase, setPhase] = useState<AskPhase>("idle");
   const [error, setError] = useState<AskErrorInfo | null>(null);
@@ -94,6 +118,20 @@ export function useAsk(): AskController {
       .slice(-HISTORY_LIMIT);
   }, []);
 
+  /** Removes the trailing (unanswered) user turn and returns its text. */
+  const popLastUserTurn = useCallback((): string => {
+    // Read synchronously from the ref — a state updater runs during a later
+    // render, so capturing the text inside setThread would return "" here.
+    const last = messagesRef.current[messagesRef.current.length - 1];
+    const removedText = last?.role === "user" ? last.text : "";
+    if (removedText) {
+      setThread((prev) =>
+        prev[prev.length - 1]?.role === "user" ? prev.slice(0, -1) : prev,
+      );
+    }
+    return removedText;
+  }, [setThread]);
+
   const run = useCallback(
     (params: AskParams, history: Turn[]) => {
       controllerRef.current?.abort();
@@ -107,6 +145,8 @@ export function useAsk(): AskController {
       askTravelPia({ ...params, history }, { signal: controller.signal })
         .then((res) => {
           if (controller.signal.aborted) return;
+          // The server is the authority on the allowance; just mirror it.
+          reportQuota(res.quota);
           setThread((prev) => [
             ...prev,
             { id: nextId(), role: "assistant", response: res },
@@ -115,11 +155,28 @@ export function useAsk(): AskController {
         })
         .catch((err) => {
           if (controller.signal.aborted || err?.name === "AbortError") return;
+
+          // Running out of questions, or reaching for a premium mode, is an
+          // upgrade moment — the sheet handles it, not the error card. The
+          // question never ran, so hand the text back to the input.
+          if (handleApiError(err)) {
+            const returned = popLastUserTurn();
+            setPhase("idle");
+            if (returned) onQuestionReturned?.(returned);
+            return;
+          }
+
           setError(toErrorInfo(err));
           setPhase("error");
         });
     },
-    [setThread],
+    [
+      handleApiError,
+      onQuestionReturned,
+      popLastUserTurn,
+      reportQuota,
+      setThread,
+    ],
   );
 
   const ask = useCallback(
@@ -152,19 +209,11 @@ export function useAsk(): AskController {
 
   const editLast = useCallback((): string => {
     controllerRef.current?.abort();
-    // Read synchronously from the ref — a state updater runs during a later
-    // render, so capturing the text inside setThread would return "" here.
-    const last = messagesRef.current[messagesRef.current.length - 1];
-    const removedText = last?.role === "user" ? last.text : "";
-    if (removedText) {
-      setThread((prev) =>
-        prev[prev.length - 1]?.role === "user" ? prev.slice(0, -1) : prev,
-      );
-    }
+    const removedText = popLastUserTurn();
     setError(null);
     setPhase("idle");
     return removedText;
-  }, [setThread]);
+  }, [popLastUserTurn]);
 
   const reset = useCallback(() => {
     controllerRef.current?.abort();

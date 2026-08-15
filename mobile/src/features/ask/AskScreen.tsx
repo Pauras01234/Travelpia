@@ -24,6 +24,8 @@ import { AppText } from "@/components/AppText";
 import type { AskMode } from "@/api/types";
 import { SUGGESTED_PROMPTS } from "@/constants/prompts";
 import { useExplore } from "@/features/explore/ExploreContext";
+import { usePremium } from "@/features/premium/PremiumContext";
+import { QuotaNotice } from "@/features/premium/QuotaNotice";
 import { useTheme } from "@/theme/ThemeProvider";
 
 import { AnswerView } from "./components/AnswerView";
@@ -39,13 +41,17 @@ import { useAsk } from "./useAsk";
 
 export function AskScreen() {
   const theme = useTheme();
-  const ask = useAsk();
   const scrollRef = useRef<ScrollView>(null);
+  const { hasFeature, requestAccess, outOfQuestions } = usePremium();
 
   const { county, setCounty } = useExplore();
   const [mode, setMode] = useState<AskMode>("fast");
   const [question, setQuestion] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  // A question that was never answered (out of allowance, premium-only mode)
+  // goes back in the input rather than being lost.
+  const ask = useAsk({ onQuestionReturned: setQuestion });
 
   const submit = useCallback(
     (text: string) => {
@@ -141,13 +147,27 @@ export function AskScreen() {
             },
           ]}
         >
-          {!hasThread && <ModeToggle mode={mode} onChange={setMode} />}
+          {!hasThread && (
+            <ModeToggle
+              mode={mode}
+              onChange={setMode}
+              detailedLocked={!hasFeature("detailedMode")}
+              onLockedPress={() => requestAccess("detailedMode")}
+            />
+          )}
+          <QuotaNotice />
           <AskInput
             value={question}
             onChangeText={setQuestion}
             onSubmit={() => submit(question)}
             county={county}
-            disabled={ask.phase === "thinking"}
+            // Once the allowance is gone every message is refused, small talk
+            // included — so the box is disabled rather than inviting a send
+            // that can only fail. QuotaNotice carries the upgrade action.
+            disabled={ask.phase === "thinking" || outOfQuestions}
+            placeholder={
+              outOfQuestions ? "You've used today's questions" : undefined
+            }
           />
         </View>
       </KeyboardAvoidingView>

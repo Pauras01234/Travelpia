@@ -24,7 +24,7 @@ import { Avatar } from "@/components/Avatar";
 import { COUNTIES, type County } from "@/constants/counties";
 import { CountyPickerModal } from "@/features/ask/components/CountyPickerModal";
 import { useExplore } from "@/features/explore/ExploreContext";
-import { useProfile } from "@/features/profile/useProfile";
+import { useProfile } from "@/features/profile/ProfileContext";
 import { useAvatar } from "@/features/settings/AvatarContext";
 import { useTheme } from "@/theme/ThemeProvider";
 

@@ -11,7 +11,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 LLMProvider = Literal["openai", "anthropic"]
@@ -67,6 +67,28 @@ class Settings(BaseSettings):
     # --- Networking / caching --------------------------------------------
     http_timeout_seconds: float = 8.0
     cache_ttl_seconds: int = 1200
+
+    # --- Plans & quota ----------------------------------------------------
+    # Daily allowance of *grounded* answers per plan. Conversational replies
+    # and no-result answers are never charged (see security/limits.py).
+    free_daily_asks: int = 5
+    # Premium is marketed as unlimited but capped as fraud protection: one
+    # compromised account on a truly uncapped plan is an open-ended bill.
+    premium_daily_asks: int = 200
+    # Detailed mode costs ~2x the output tokens and ~1.7x the search results,
+    # so it is a premium capability by default.
+    free_detailed_mode: bool = False
+    # Kill switch: disables metering entirely without a deploy. Use if the
+    # usage store misbehaves in production.
+    quota_enabled: bool = True
+    # How long a resolved plan is cached. Bounds how long an upgrade takes to
+    # take effect; keep short.
+    plan_cache_ttl_seconds: int = 60
+
+    # --- Rate limiting (abuse guard, distinct from the quota) -------------
+    rate_limit_enabled: bool = True
+    rate_limit_requests: int = 20
+    rate_limit_window_seconds: int = 60
 
     # --- Auth (Supabase JWT) — pluggable seam ----------------------------
     # When False (default for Core-5 parallel dev) the API accepts anonymous

@@ -8,6 +8,7 @@ from app.api.deps import get_image_service
 from app.config import Settings, get_settings
 from app.schemas.ask import ImagesResponse
 from app.security.auth import User, get_current_user
+from app.security.limits import enforce_rate_limit
 from app.services.images import ImageService
 
 router = APIRouter(tags=["images"])
@@ -17,6 +18,7 @@ router = APIRouter(tags=["images"])
     "/images",
     response_model=ImagesResponse,
     summary="Search landscape photos for a query",
+    dependencies=[Depends(enforce_rate_limit)],
 )
 async def images(
     query: str = Query(..., min_length=2, max_length=120),

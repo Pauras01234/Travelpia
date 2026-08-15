@@ -1,12 +1,17 @@
 /**
- * Thin HTTP client for the TravelPia backend.
+ * The app's HTTP client for the TravelPia backend.
  *
- * Responsibilities: resolve the base URL, attach headers (and, later, the
- * Supabase bearer token), enforce a request timeout, and normalise both
- * network failures and the backend's error envelope into a single typed
- * `ApiError` the UI can branch on.
+ * Responsibilities: resolve the base URL, attach the session bearer token
+ * (refreshing it first when needed), enforce a request timeout, clear the
+ * session on a 401, and normalise both network failures and the backend's
+ * error envelope into a single typed `ApiError` the UI can branch on.
+ *
+ * Callers never handle tokens: `AuthProvider` registers the session with
+ * `authBridge` and every request picks it up from there.
  */
 import Constants from "expo-constants";
+
+import { currentAccessToken, notifyUnauthorized } from "@/lib/authBridge";
 
 import type { ApiErrorBody } from "./types";
 
@@ -29,18 +34,22 @@ export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
   readonly requestId?: string | null;
+  /** Machine-readable context from the error envelope (quota, retry hints). */
+  readonly meta?: Record<string, unknown> | null;
 
   constructor(params: {
     code: string;
     detail: string;
     status: number;
     requestId?: string | null;
+    meta?: Record<string, unknown> | null;
   }) {
     super(params.detail);
     this.name = "ApiError";
     this.code = params.code;
     this.status = params.status;
     this.requestId = params.requestId;
+    this.meta = params.meta;
   }
 
   /** True for transient failures worth offering a "Retry" for. */
@@ -48,16 +57,27 @@ export class ApiError extends Error {
     return (
       this.code === "network_error" ||
       this.code === "timeout" ||
+      // Rate limiting clears on its own; a quota does not.
+      this.code === "rate_limited" ||
       this.status >= 500
     );
+  }
+
+  /** Seconds to wait before retrying, when the server said so. */
+  get retryAfterSeconds(): number | null {
+    const value = this.meta?.retry_after;
+    return typeof value === "number" ? value : null;
   }
 }
 
 interface RequestOptions {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   signal?: AbortSignal;
-  /** Bearer token to attach once Supabase auth is live. */
+  /**
+   * Overrides the session token for this request. Omit it — the client
+   * resolves the current session automatically.
+   */
   token?: string | null;
   timeoutMs?: number;
 }
@@ -88,6 +108,10 @@ export async function apiFetch<T>(
     else signal.addEventListener("abort", () => controller.abort());
   }
 
+  // An explicit `token` wins (including `null` to force an anonymous call);
+  // otherwise use the live session, refreshing it if it's about to expire.
+  const bearer = token === undefined ? await currentAccessToken() : token;
+
   let response: Response;
   try {
     response = await fetch(`${API_BASE_URL}${path}`, {
@@ -95,7 +119,7 @@ export async function apiFetch<T>(
       headers: {
         Accept: "application/json",
         ...(body ? { "Content-Type": "application/json" } : {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
@@ -135,6 +159,12 @@ async function parseResponse<T>(response: Response): Promise<T> {
     return payload as T;
   }
 
+  // The session is gone (expired, revoked, or signed out elsewhere). Clear it
+  // so the navigator routes back to login instead of looping on failures.
+  if (response.status === 401) {
+    await notifyUnauthorized();
+  }
+
   const errBody = payload as ApiErrorBody | null;
   throw new ApiError({
     code: errBody?.error ?? "http_error",
@@ -143,5 +173,6 @@ async function parseResponse<T>(response: Response): Promise<T> {
       "Something went wrong. Please try again in a moment.",
     status: response.status,
     requestId: errBody?.request_id ?? requestId,
+    meta: errBody?.meta ?? null,
   });
 }

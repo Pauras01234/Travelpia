@@ -2,7 +2,7 @@
   "expo": {
     "name": "TravelPia",
     "slug": "travelpia",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "scheme": "travelpia",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
@@ -29,6 +29,13 @@
       "output": "single",
       "favicon": "./assets/favicon.png"
     },
+    "updates": {
+      "url": "https://u.expo.dev/68f00ac8-55cf-42f1-b00a-02221b0c989c",
+      "fallbackToCacheTimeout": 0
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "plugins": [
       "expo-router",
       "expo-font",
@@ -36,11 +43,12 @@
         "expo-build-properties",
         {
           "android": {
-            "compileSdkVersion": 35,
-            "targetSdkVersion": 35
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36
           }
         }
-      ]
+      ],
+      "@sentry/react-native"
     ],
     "extra": {
       "router": {

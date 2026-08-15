@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from app.api.deps import get_places_service
 from app.schemas.places import PlacePhotoResponse, PlacesResponse
 from app.security.auth import User, get_current_user
+from app.security.limits import enforce_rate_limit
 from app.services.places import PlacesService
 
 router = APIRouter(tags=["places"])
@@ -16,6 +17,7 @@ router = APIRouter(tags=["places"])
     "/places",
     response_model=PlacesResponse,
     summary="Search real places (with coordinates) for the map",
+    dependencies=[Depends(enforce_rate_limit)],
 )
 async def places(
     query: str = Query(..., min_length=1, max_length=120),
@@ -32,6 +34,7 @@ async def places(
     "/places/photo",
     response_model=PlacePhotoResponse,
     summary="Get a representative photo URL for a place",
+    dependencies=[Depends(enforce_rate_limit)],
 )
 async def place_photo(
     query: str = Query(..., min_length=1, max_length=160),

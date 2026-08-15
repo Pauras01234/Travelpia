@@ -23,10 +23,13 @@ from app.core.cache import TTLCache
 from app.core.context import request_id_ctx
 from app.core.errors import AppError
 from app.core.logging import configure_logging, get_logger
+from app.core.rate_limit import RateLimiter
 from app.schemas.ask import AskResponse
 from app.schemas.common import ErrorResponse
+from app.services.entitlements import SupabasePlanResolver
 from app.services.llm import build_llm_client
 from app.services.search import SearchResult
+from app.services.usage import SupabaseUsageStore
 
 logger = get_logger(__name__)
 
@@ -48,6 +51,17 @@ async def lifespan(app: FastAPI):
     app.state.image_cache = TTLCache(settings.cache_ttl_seconds)
     app.state.response_cache = TTLCache[AskResponse](settings.cache_ttl_seconds)
     app.state.places_cache = TTLCache(settings.cache_ttl_seconds)
+
+    # Quota + entitlement infrastructure. Both stores resolve their Supabase
+    # client lazily, so an unconfigured environment fails at call time (where
+    # the fail-open/fail-closed policies handle it) rather than at startup.
+    app.state.plan_cache = TTLCache[str](settings.plan_cache_ttl_seconds)
+    app.state.usage_store = SupabaseUsageStore()
+    app.state.plan_resolver = SupabasePlanResolver(app.state.plan_cache)
+    app.state.rate_limiter = RateLimiter(
+        limit=settings.rate_limit_requests,
+        window_seconds=settings.rate_limit_window_seconds,
+    )
 
     # Build the LLM client eagerly so misconfiguration surfaces at startup in
     # logs (not as a per-request surprise). If unconfigured, the /ask route
@@ -120,11 +134,24 @@ def _register_middleware(app: FastAPI) -> None:
         return response
 
 
-def _error_response(status_code: int, code: str, detail: str) -> JSONResponse:
+def _error_response(
+    status_code: int,
+    code: str,
+    detail: str,
+    meta: dict[str, object] | None = None,
+) -> JSONResponse:
     body = ErrorResponse(
-        error=code, detail=detail, request_id=request_id_ctx.get()
+        error=code, detail=detail, request_id=request_id_ctx.get(), meta=meta
     )
-    return JSONResponse(status_code=status_code, content=body.model_dump())
+    headers: dict[str, str] = {}
+    # Standard header so generic HTTP clients back off correctly, in addition
+    # to the machine-readable `meta` our own client reads.
+    retry_after = (meta or {}).get("retry_after")
+    if isinstance(retry_after, int):
+        headers["Retry-After"] = str(retry_after)
+    return JSONResponse(
+        status_code=status_code, content=body.model_dump(), headers=headers
+    )
 
 
 def _register_exception_handlers(app: FastAPI) -> None:
@@ -132,7 +159,9 @@ def _register_exception_handlers(app: FastAPI) -> None:
     async def handle_app_error(_: Request, exc: AppError) -> JSONResponse:
         if exc.status_code >= 500:
             logger.error("%s: %s", exc.code, exc.detail)
-        return _error_response(exc.status_code, exc.code, exc.detail)
+        return _error_response(
+            exc.status_code, exc.code, exc.detail, getattr(exc, "meta", None)
+        )
 
     @app.exception_handler(RequestValidationError)
     async def handle_validation(
