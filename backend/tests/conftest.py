@@ -19,14 +19,26 @@ from app.api.deps import (
     get_rag_service,
     get_search_service,
 )
-from app.config import get_settings
+from app.config import Settings, get_settings
 from app.core.cache import TTLCache
+from app.core.rate_limit import RateLimiter
+from app.domain.plans import Plan
 from app.main import create_app
 from app.schemas.ask import Image, Source
 from app.schemas.places import MapPlace
+from app.security.auth import User, get_current_user
+from app.security.limits import (
+    get_plan_resolver,
+    get_rate_limiter,
+    get_usage_store,
+)
 from app.services.intent import RouteDecision
 from app.services.rag import RagService
 from app.services.search import SearchResult
+
+#: A signed-in principal for tests that need metering (anonymous callers are
+#: deliberately unmetered — see security/limits.py).
+SIGNED_IN = User(id="user-1", email="traveller@example.com", is_anonymous=False)
 
 
 class FakeLLM:
@@ -104,6 +116,49 @@ class FakePlaces:
         return list(self._places)
 
 
+class FakeUsageStore:
+    """In-memory daily counter that can be told to fail like a real outage."""
+
+    def __init__(
+        self,
+        counts: dict[str, int] | None = None,
+        *,
+        fail_reads: bool = False,
+        fail_writes: bool = False,
+    ) -> None:
+        self.counts = dict(counts or {})
+        self.fail_reads = fail_reads
+        self.fail_writes = fail_writes
+        self.increments = 0
+
+    async def get_today(self, user_id: str) -> int:
+        if self.fail_reads:
+            raise RuntimeError("usage store unavailable")
+        return self.counts.get(user_id, 0)
+
+    async def increment(self, user_id: str) -> int:
+        self.increments += 1
+        if self.fail_writes:
+            raise RuntimeError("usage store unavailable")
+        self.counts[user_id] = self.counts.get(user_id, 0) + 1
+        return self.counts[user_id]
+
+
+class FakePlanResolver:
+    """Returns a fixed plan, or fails to exercise the fail-closed path."""
+
+    def __init__(self, plan: Plan = Plan.free, *, fail: bool = False) -> None:
+        self.plan = plan
+        self.fail = fail
+        self.calls = 0
+
+    async def get_plan(self, user_id: str) -> Plan:
+        self.calls += 1
+        if self.fail:
+            raise RuntimeError("plan lookup unavailable")
+        return self.plan
+
+
 @pytest.fixture
 def make_client():
     """Factory: build a TestClient with the given fakes wired in."""
@@ -114,6 +169,11 @@ def make_client():
         images: list[Image] | None = None,
         llm: FakeLLM | None = None,
         route: RouteDecision | None = None,
+        user: User | None = None,
+        usage: FakeUsageStore | None = None,
+        plans: FakePlanResolver | None = None,
+        rate_limit: int = 1_000,
+        settings_overrides: dict | None = None,
     ) -> tuple[TestClient, dict]:
         get_settings.cache_clear()
         app = create_app()
@@ -147,6 +207,27 @@ def make_client():
             response_cache=response_cache,
         )
 
+        # Quota + limits. Overriding the providers (rather than app.state)
+        # keeps these independent of whether the lifespan has run.
+        fake_usage = usage or FakeUsageStore()
+        fake_plans = plans or FakePlanResolver()
+        app.dependency_overrides[get_usage_store] = lambda: fake_usage
+        app.dependency_overrides[get_plan_resolver] = lambda: fake_plans
+        # One shared instance — building it inside the lambda would hand every
+        # request a fresh window and silently disable the limiter.
+        limiter = RateLimiter(limit=rate_limit, window_seconds=60)
+        app.dependency_overrides[get_rate_limiter] = lambda: limiter
+
+        # Init kwargs outrank the environment in pydantic-settings, so this
+        # pins limits regardless of the developer's local .env.
+        if settings_overrides:
+            settings = Settings(**settings_overrides)
+            app.dependency_overrides[get_settings] = lambda: settings
+
+        # Default principal stays anonymous so existing tests are unaffected.
+        if user is not None:
+            app.dependency_overrides[get_current_user] = lambda: user
+
         client = TestClient(app)
         return client, {
             "search": fake_search,
@@ -154,6 +235,8 @@ def make_client():
             "llm": fake_llm,
             "router": fake_router,
             "places": fake_places,
+            "usage": fake_usage,
+            "plans": fake_plans,
         }
 
     return _make

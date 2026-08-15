@@ -18,8 +18,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { Avatar } from "@/components/Avatar";
 import { AppText } from "@/components/AppText";
-import { useAuth } from "@/contexts/AuthContext";
-import { useProfile } from "@/features/profile/useProfile";
+import { PremiumBadge } from "@/features/premium/PremiumBadge";
+import { useFeatureGate } from "@/features/premium/PremiumContext";
+import { useProfile } from "@/features/profile/ProfileContext";
 import { useTheme } from "@/theme/ThemeProvider";
 
 import { useAvatar } from "./AvatarContext";
@@ -30,9 +31,9 @@ type IoniconName = keyof typeof Ionicons.glyphMap;
 export function SettingsScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const { handleUnauthorized } = useAuth();
   const { profile, loading, reload } = useProfile();
   const { avatarUri, setAvatarUri } = useAvatar();
+  const photoGate = useFeatureGate("profilePhoto");
 
   const [name, setName] = useState("");
   const [saving, setSaving] = useState(false);
@@ -45,6 +46,12 @@ export function SettingsScreen() {
   }, [profile?.full_name]);
 
   const changePhoto = async () => {
+    // Gate before requesting permission: a free user should never see an OS
+    // photo prompt for something they can't complete.
+    if (!photoGate.allowed) {
+      photoGate.requestAccess();
+      return;
+    }
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) {
       setError("Photo access is needed to change your picture.");
@@ -66,7 +73,7 @@ export function SettingsScreen() {
     setSaved(false);
     setError(null);
     try {
-      await updateUsername(name.trim(), handleUnauthorized);
+      await updateUsername(name.trim());
       await reload();
       setSaved(true);
     } catch (e) {
@@ -110,10 +117,20 @@ export function SettingsScreen() {
               size={88}
             />
             <View style={styles.photoActions}>
-              <Pressable onPress={changePhoto} accessibilityRole="button">
+              <Pressable
+                onPress={changePhoto}
+                accessibilityRole="button"
+                accessibilityHint={
+                  photoGate.allowed
+                    ? undefined
+                    : "Profile photos are part of TravelPia Premium"
+                }
+                style={styles.photoAction}
+              >
                 <AppText variant="bodySemibold" color={theme.colors.primary}>
                   Change photo
                 </AppText>
+                {!photoGate.allowed && <PremiumBadge />}
               </Pressable>
               {avatarUri && (
                 <Pressable onPress={() => setAvatarUri(null)} accessibilityRole="button">
@@ -260,7 +277,8 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   content: { padding: 20, paddingBottom: 32, gap: 10 },
   avatarBlock: { alignItems: "center", gap: 10, marginBottom: 8 },
-  photoActions: { flexDirection: "row", gap: 20 },
+  photoActions: { flexDirection: "row", gap: 20, alignItems: "center" },
+  photoAction: { flexDirection: "row", alignItems: "center", gap: 6 },
   label: { letterSpacing: 0.5, marginTop: 4 },
   inputShell: {
     flexDirection: "row",

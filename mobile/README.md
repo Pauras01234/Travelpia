@@ -105,6 +105,36 @@ generate from the backend's OpenAPI at `/openapi.json`).
 
 ## Auth
 
-No auth in this slice (backend `AUTH_REQUIRED=false`). `apiFetch` already
-accepts a bearer `token`; when Supabase auth lands, pass the session JWT
-through `askTravelPia(req, { token })` — no other changes needed.
+`src/api/client.ts` is the app's single HTTP client and handles auth itself —
+**feature code never touches tokens**. `AuthProvider` registers the session
+with `src/lib/authBridge.ts`; every request then picks up the access token,
+refreshes it first if it's within a minute of expiry, and clears the session on
+a 401 so the `(tabs)` layout redirects to login.
+
+`src/lib/session.ts` stores the expiry the server reports (`expires_in`) rather
+than decoding the JWT, and funnels concurrent refreshes through a single
+in-flight promise — several screens fetch on mount, and parallel refreshes
+would rotate the refresh token against each other. A network failure during
+refresh keeps the session (the server arbitrates); only a rejected refresh
+token signs the user out.
+
+`src/lib/api.ts` holds the unauthenticated auth endpoints (login, signup,
+refresh, logout) and deliberately bypasses the client — routing refresh through
+something that needs a token would recurse.
+
+## Premium & the Ask quota
+
+`src/features/premium/` owns entitlement. Adding a paid capability is one entry
+in `entitlements.ts` plus a `useFeatureGate("key")` call at the point of use —
+the upgrade sheet is hosted by `PremiumProvider`, so screens don't own a modal.
+
+- **Plan** comes from the profile (`ProfileContext`, one fetch shared by Home,
+  Profile, Settings and the gate).
+- **Allowance** is never counted locally: every answer carries the server's
+  `quota`, and `QuotaNotice` displays it. It self-corrects across devices, day
+  rollovers and plan changes.
+- **Running out is not an error.** `useAsk` routes `quota_exceeded` and
+  `premium_required` to `handleApiError`, which opens the sheet and hands the
+  user's question back to the input instead of rendering the error card.
+- The input **stays enabled** at zero: conversational replies are free, and
+  blocking it would stop someone saying "thanks" because they ran out.

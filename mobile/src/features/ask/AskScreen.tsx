@@ -24,6 +24,8 @@ import { AppText } from "@/components/AppText";
 import type { AskMode } from "@/api/types";
 import { SUGGESTED_PROMPTS } from "@/constants/prompts";
 import { useExplore } from "@/features/explore/ExploreContext";
+import { usePremium } from "@/features/premium/PremiumContext";
+import { QuotaNotice } from "@/features/premium/QuotaNotice";
 import { useTheme } from "@/theme/ThemeProvider";
 
 import { AnswerView } from "./components/AnswerView";
@@ -39,13 +41,17 @@ import { useAsk } from "./useAsk";
 
 export function AskScreen() {
   const theme = useTheme();
-  const ask = useAsk();
   const scrollRef = useRef<ScrollView>(null);
+  const { hasFeature, requestAccess } = usePremium();
 
   const { county, setCounty } = useExplore();
   const [mode, setMode] = useState<AskMode>("fast");
   const [question, setQuestion] = useState("");
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  // A question that was never answered (out of allowance, premium-only mode)
+  // goes back in the input rather than being lost.
+  const ask = useAsk({ onQuestionReturned: setQuestion });
 
   const submit = useCallback(
     (text: string) => {
@@ -141,7 +147,15 @@ export function AskScreen() {
             },
           ]}
         >
-          {!hasThread && <ModeToggle mode={mode} onChange={setMode} />}
+          {!hasThread && (
+            <ModeToggle
+              mode={mode}
+              onChange={setMode}
+              detailedLocked={!hasFeature("detailedMode")}
+              onLockedPress={() => requestAccess("detailedMode")}
+            />
+          )}
+          <QuotaNotice />
           <AskInput
             value={question}
             onChangeText={setQuestion}
